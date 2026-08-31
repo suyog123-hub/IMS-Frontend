@@ -1,7 +1,7 @@
 # Inventory Management System (IMS) — Frontend
 
 A frontend-only inventory management demo built with **React**, **Vite**, and **TypeScript**. All data is persisted in the browser via `localStorage` — no backend required.
-
+## live at - https://ims-dashboard-six.vercel.app/
 ## Features
 
 - **Dashboard** — overview cards (categories, units, products, total quantity, inventory value, low-stock count), dynamic charts (movement mix donut, sales vs returns, top sellers, inventory value by category, stock by category/channel), a low-stock alert, and recent stock movements.
