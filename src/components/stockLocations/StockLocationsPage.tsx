@@ -10,6 +10,7 @@ import {
 } from '../../storage'
 import { ConfirmDialog } from '../common/ConfirmDialog'
 import { StockLocationList } from './StockLocationList'
+import { toastError, toastSuccess } from '../../utils/toast'
 
 interface BlockedLocation {
   location: StockLocation
@@ -63,7 +64,14 @@ export function StockLocationsPage() {
   }
 
   const confirmDelete = () => {
-    if (deleteTarget) remove(deleteTarget.id)
+    if (deleteTarget) {
+      const removed = remove(deleteTarget.id)
+      if (removed) {
+        toastSuccess(`Location "${deleteTarget.name}" deleted.`)
+      } else {
+        toastError('Could not delete the location. It may no longer exist.')
+      }
+    }
     setDeleteTarget(null)
   }
 

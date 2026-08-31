@@ -2,6 +2,15 @@ import type { Category, Product, StockLocation, Unit } from '../types/models'
 import { toNumber } from './numbers'
 import { STOCK_LOCATION_MAIN_ID } from '../constants'
 
+export const RETURN_REASONS = [
+  'Damaged item',
+  'Wrong item',
+  'Wrong size / color',
+  'No longer wanted',
+  'Duplicate order',
+  'Other',
+] as const
+
 export function validateName(name: string): string | null {
   return name.trim().length > 0 ? null : 'Name is required.'
 }
@@ -210,6 +219,93 @@ export function validateTransfer(
     errors.quantity = 'Must be a positive whole number.'
   } else if (available !== null && quantity > available) {
     errors.quantity = `Only ${available} unit${available === 1 ? '' : 's'} available here.`
+  }
+
+  return errors
+}
+
+export interface SaleFormValues {
+  productId: string
+  locationId: string
+  quantity: string
+  reference: string
+}
+
+export interface SaleFormErrors {
+  productId?: string
+  locationId?: string
+  quantity?: string
+  reference?: string
+}
+
+export function validateSale(
+  values: SaleFormValues,
+  products: Product[],
+  locations: StockLocation[],
+  available: number | null,
+): SaleFormErrors {
+  const errors: SaleFormErrors = {}
+
+  if (!values.productId) {
+    errors.productId = 'Product is required.'
+  } else if (!products.some((product) => product.id === values.productId)) {
+    errors.productId = 'The selected product no longer exists.'
+  }
+
+  if (!values.locationId) {
+    errors.locationId = 'Location is required.'
+  } else if (!locations.some((location) => location.id === values.locationId)) {
+    errors.locationId = 'The selected location no longer exists.'
+  }
+
+  const quantity = toNumber(values.quantity)
+  if (quantity === null || !Number.isInteger(quantity) || quantity <= 0) {
+    errors.quantity = 'Must be a positive whole number.'
+  } else if (available !== null && quantity > available) {
+    errors.quantity = `Only ${available} unit${available === 1 ? '' : 's'} available here.`
+  }
+
+  return errors
+}
+
+export interface ReturnFormValues {
+  productId: string
+  locationId: string
+  quantity: string
+  reference: string
+  reason: string
+}
+
+export interface ReturnFormErrors {
+  productId?: string
+  locationId?: string
+  quantity?: string
+  reference?: string
+  reason?: string
+}
+
+export function validateReturn(
+  values: ReturnFormValues,
+  products: Product[],
+  locations: StockLocation[],
+): ReturnFormErrors {
+  const errors: ReturnFormErrors = {}
+
+  if (!values.productId) {
+    errors.productId = 'Product is required.'
+  } else if (!products.some((product) => product.id === values.productId)) {
+    errors.productId = 'The selected product no longer exists.'
+  }
+
+  if (!values.locationId) {
+    errors.locationId = 'Location is required.'
+  } else if (!locations.some((location) => location.id === values.locationId)) {
+    errors.locationId = 'The selected location no longer exists.'
+  }
+
+  const quantity = toNumber(values.quantity)
+  if (quantity === null || !Number.isInteger(quantity) || quantity <= 0) {
+    errors.quantity = 'Must be a positive whole number.'
   }
 
   return errors

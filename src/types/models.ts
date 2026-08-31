@@ -34,10 +34,13 @@ export interface ProductVariant extends Entity {
   image: string
 }
 
+export type LocationChannel = 'warehouse' | 'store' | 'online' | 'popup'
+
 export interface StockLocation extends Entity {
   name: string
   code: string
   parentId: string | null
+  channel?: LocationChannel
 }
 
 export interface Inventory extends Entity {
@@ -46,7 +49,7 @@ export interface Inventory extends Entity {
   quantity: number
 }
 
-export type MovementType = 'inbound' | 'transfer-in' | 'transfer-out'
+export type MovementType = 'inbound' | 'transfer-in' | 'transfer-out' | 'sale' | 'return-in'
 
 export interface StockMovement extends Entity {
   productId: string
@@ -54,6 +57,8 @@ export interface StockMovement extends Entity {
   toLocationId: string | null
   quantity: number
   type: MovementType
+  reference?: string
+  reason?: string
 }
 
 export type NewEntity = Omit<Entity, 'id' | 'createdAt' | 'updatedAt'>
@@ -68,6 +73,7 @@ export type StockLocationInput = NewEntity & {
   name: string
   code: string
   parentId: string | null
+  channel?: LocationChannel
 }
 export type InventoryInput = NewEntity & {
   productId: string
@@ -80,4 +86,6 @@ export type StockMovementInput = NewEntity & {
   toLocationId: string | null
   quantity: number
   type: MovementType
+  reference?: string
+  reason?: string
 }

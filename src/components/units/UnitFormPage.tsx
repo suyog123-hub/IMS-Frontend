@@ -1,6 +1,7 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { unitStorage } from '../../storage'
 import { useCollection } from '../../hooks/useCollection'
+import { toastError, toastSuccess } from '../../utils/toast'
 import { UnitForm } from './UnitForm'
 
 export function UnitFormPage() {
@@ -12,9 +13,15 @@ export function UnitFormPage() {
 
   const handleSubmit = (name: string) => {
     if (unit) {
-      unitStorage.update(unit.id, { name })
+      const updated = unitStorage.update(unit.id, { name })
+      if (!updated) {
+        toastError('Could not update the unit. Please try again.')
+        return
+      }
+      toastSuccess('Unit updated successfully.')
     } else {
       unitStorage.create({ name })
+      toastSuccess('Unit created successfully.')
     }
     navigate('/units')
   }

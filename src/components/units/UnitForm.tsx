@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import type { Unit } from '../../types/models'
 import { validateName } from '../../utils/validation'
+import { toastError } from '../../utils/toast'
 import { Field } from '../common/Field'
 
 interface UnitFormProps {
@@ -20,6 +21,7 @@ export function UnitForm({ initial, takenNames, onCancel, onSubmit }: UnitFormPr
     const validationError = validateName(trimmed)
     if (validationError) {
       setError(validationError)
+      toastError('Please fix the highlighted field before saving.')
       return
     }
     const normalized = trimmed.toLowerCase()
@@ -28,6 +30,7 @@ export function UnitForm({ initial, takenNames, onCancel, onSubmit }: UnitFormPr
     )
     if (isDuplicate) {
       setError('A unit with this name already exists.')
+      toastError('A unit with this name already exists.')
       return
     }
     onSubmit(trimmed)

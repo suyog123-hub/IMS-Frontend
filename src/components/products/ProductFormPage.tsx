@@ -13,6 +13,7 @@ import {
   type ProductVariantFormErrors,
 } from '../../utils/validation'
 import { formatCurrency } from '../../utils/format'
+import { toastError, toastSuccess } from '../../utils/toast'
 import { EmptyState } from '../common/EmptyState'
 import { Field } from '../common/Field'
 import { ProductVariants } from './ProductVariants'
@@ -112,7 +113,10 @@ export function ProductFormPage() {
     })
     setVariantErrors(draftErrors)
 
-    if (Object.values(validationErrors).some(Boolean) || Object.keys(draftErrors).length > 0) return
+    if (Object.values(validationErrors).some(Boolean) || Object.keys(draftErrors).length > 0) {
+      toastError('Please fix the highlighted fields before saving.')
+      return
+    }
 
     const input: ProductInput = {
       name: values.name.trim(),
@@ -126,13 +130,17 @@ export function ProductFormPage() {
     }
 
     const saved = product ? productStorage.update(product.id, input) : productStorage.create(input)
-    if (!saved) return
+    if (!saved) {
+      toastError(`Could not ${product ? 'update' : 'save'} the product. Please try again.`)
+      return
+    }
 
     ensureMainStock(saved.id, saved.quantity)
     if (!product) {
       recordInbound(saved.id, STOCK_LOCATION_MAIN_ID, saved.quantity)
     }
     syncVariants(saved, variantDrafts)
+    toastSuccess(product ? 'Product updated successfully.' : 'Product created successfully.')
     navigate('/products')
   }
 

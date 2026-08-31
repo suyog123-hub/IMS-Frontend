@@ -1,6 +1,7 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { categoryStorage } from '../../storage'
 import { useCollection } from '../../hooks/useCollection'
+import { toastError, toastSuccess } from '../../utils/toast'
 import { CategoryForm } from './CategoryForm'
 
 export function CategoryFormPage() {
@@ -12,9 +13,15 @@ export function CategoryFormPage() {
 
   const handleSubmit = (name: string) => {
     if (category) {
-      categoryStorage.update(category.id, { name })
+      const updated = categoryStorage.update(category.id, { name })
+      if (!updated) {
+        toastError('Could not update the category. Please try again.')
+        return
+      }
+      toastSuccess('Category updated successfully.')
     } else {
       categoryStorage.create({ name })
+      toastSuccess('Category created successfully.')
     }
     navigate('/categories')
   }

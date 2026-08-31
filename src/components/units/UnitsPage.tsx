@@ -5,6 +5,7 @@ import { useCollection } from '../../hooks/useCollection'
 import { productStorage, unitStorage, countProductsByUnit } from '../../storage'
 import { ConfirmDialog } from '../common/ConfirmDialog'
 import { UnitList } from './UnitList'
+import { toastError, toastSuccess } from '../../utils/toast'
 
 interface BlockedUnit {
   unit: Unit
@@ -36,7 +37,14 @@ export function UnitsPage() {
   }
 
   const confirmDelete = () => {
-    if (deleteTarget) remove(deleteTarget.id)
+    if (deleteTarget) {
+      const removed = remove(deleteTarget.id)
+      if (removed) {
+        toastSuccess(`Unit "${deleteTarget.name}" deleted.`)
+      } else {
+        toastError('Could not delete the unit. It may no longer exist.')
+      }
+    }
     setDeleteTarget(null)
   }
 

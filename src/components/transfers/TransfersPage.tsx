@@ -11,6 +11,7 @@ import {
 import { useCollection } from '../../hooks/useCollection'
 import { toNumber } from '../../utils/numbers'
 import { formatNumber } from '../../utils/format'
+import { nameColor } from '../../utils/color'
 import {
   validateTransfer,
   type TransferFormErrors,
@@ -18,9 +19,10 @@ import {
 } from '../../utils/validation'
 import { Field } from '../common/Field'
 import { EmptyState } from '../common/EmptyState'
-import { ListToolbar } from '../common/ListToolbar'
 import { Pagination } from '../common/Pagination'
+import { QuickFilterPanel } from '../common/QuickFilterPanel'
 import { MovementRow } from '../common/MovementRow'
+import { toastError, toastSuccess } from '../../utils/toast'
 
 const EMPTY_VALUES: TransferFormValues = {
   productId: '',
@@ -40,7 +42,6 @@ export function TransfersPage() {
 
   const [values, setValues] = useState<TransferFormValues>(EMPTY_VALUES)
   const [errors, setErrors] = useState<TransferFormErrors>({})
-  const [notice, setNotice] = useState<string | null>(null)
 
   const available = useMemo(() => {
     if (!values.productId || !values.fromLocationId) return null
@@ -62,6 +63,7 @@ export function TransfersPage() {
 
   const [query, setQuery] = useState('')
   const [locationId, setLocationId] = useState('all')
+  const [categoryId, setCategoryId] = useState('all')
   const [page, setPage] = useState(1)
 
   const filteredTransfers = useMemo(() => {
@@ -77,13 +79,14 @@ export function TransfersPage() {
       ) {
         return false
       }
-      if (!q) return true
       const product = products.items.find((item) => item.id === movement.productId)
+      if (categoryId !== 'all' && product?.categoryId !== categoryId) return false
+      if (!q) return true
       const name = (product?.name ?? '').toLowerCase()
       const categoryName = (categoryNames.get(product?.categoryId ?? '') ?? '').toLowerCase()
       return name.includes(q) || categoryName.includes(q)
     })
-  }, [recentTransfers, query, locationId, products.items, categories.items])
+  }, [recentTransfers, query, locationId, categoryId, products.items, categories.items])
 
   const totalPages = Math.max(1, Math.ceil(filteredTransfers.length / TRANSFERS_PER_PAGE))
   const currentPage = Math.min(page, totalPages)
@@ -96,7 +99,6 @@ export function TransfersPage() {
 
   const updateValues = (patch: Partial<TransferFormValues>) => {
     setValues((current) => ({ ...current, ...patch }))
-    setNotice(null)
     const cleared: TransferFormErrors = {}
     for (const key of Object.keys(patch)) {
       cleared[key as keyof TransferFormErrors] = undefined
@@ -109,7 +111,7 @@ export function TransfersPage() {
     const validationErrors = validateTransfer(values, products.items, locations.items, available)
     if (Object.values(validationErrors).some(Boolean)) {
       setErrors(validationErrors)
-      setNotice(null)
+      toastError('Please fix the highlighted fields before transferring.')
       return
     }
 
@@ -117,13 +119,14 @@ export function TransfersPage() {
     const result = transferStock(values.productId, values.fromLocationId, values.toLocationId, quantity)
     if (!result.ok) {
       setErrors((current) => ({ ...current, quantity: result.error }))
+      toastError(result.error ?? 'Could not complete the transfer. Please try again.')
       return
     }
 
     inventory.refresh()
     movements.refresh()
-    setNotice(
-      `Transferred ${formatNumber(quantity)} of '${productName}' from ${fromName} to ${toName}.`
+    toastSuccess(
+      `Transferred ${formatNumber(quantity)} of "${productName}" from ${fromName} to ${toName}.`
     )
     setValues((current) => ({ ...current, quantity: '' }))
   }
@@ -209,8 +212,6 @@ export function TransfersPage() {
         </form>
       </div>
 
-      {notice && <div className="transfer-notice">{notice}</div>}
-
       <div className="page-subheader">
         <h2>Recent Transfers</h2>
         <Link to="/movements" className="btn">
@@ -227,43 +228,100 @@ export function TransfersPage() {
         </div>
       ) : (
         <>
-          <div className="card">
-            <ListToolbar
-              query={query}
-              onQueryChange={(value) => {
-                setQuery(value)
-                setPage(1)
-              }}
-              placeholder="Search transfers…"
-              filters={[
+          <div className="products-layout">
+            <QuickFilterPanel
+              groups={[
                 {
+                  label: 'Category',
+                  kind: 'category',
+                  value: categoryId,
+                  options: [
+                    { value: 'all', label: 'All' },
+                    ...categories.items.map((category) => ({
+                      value: category.id,
+                      label: category.name,
+                      color: nameColor(category.name),
+                    })),
+                  ],
+                  onChange: (value) => {
+                    setCategoryId(value)
+                    setPage(1)
+                  },
+                },
+                {
+                  label: 'Location',
+                  kind: 'location',
                   value: locationId,
+                  options: [
+                    { value: 'all', label: 'All' },
+                    ...locations.items.map((location) => ({
+                      value: location.id,
+                      label: location.name,
+                      color: nameColor(location.name),
+                    })),
+                  ],
                   onChange: (value) => {
                     setLocationId(value)
                     setPage(1)
                   },
-                  options: [
-                    { value: 'all', label: 'All locations' },
-                    ...locations.items.map((location) => ({ value: location.id, label: location.name })),
-                  ],
                 },
               ]}
+              onReset={() => {
+                setCategoryId('all')
+                setLocationId('all')
+                setQuery('')
+                setPage(1)
+              }}
             />
-            {filteredTransfers.length === 0 ? (
-              <EmptyState title="No matching transfers" message="Try a different search or filter." />
-            ) : (
-              <ul className="movement-card-grid">
-                {visibleTransfers.map((movement) => (
-                  <MovementRow
-                    key={movement.id}
-                    movement={movement}
-                    products={products.items}
-                    categories={categories.items}
-                    locations={locations.items}
+
+            <div className="products-main">
+              <div className="products-toolbar">
+                <div className="search-wrap">
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="16"
+                    height="16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="11" cy="11" r="7" />
+                    <path d="m21 21-4.3-4.3" />
+                  </svg>
+                  <input
+                    type="text"
+                    value={query}
+                    onChange={(event) => {
+                      setQuery(event.target.value)
+                      setPage(1)
+                    }}
+                    placeholder="Search transfers…"
+                    className="input products-search"
                   />
-                ))}
-              </ul>
-            )}
+                </div>
+              </div>
+
+              {filteredTransfers.length === 0 ? (
+                <div className="card">
+                  <EmptyState title="No matching transfers" message="Try a different search or filter." />
+                </div>
+              ) : (
+                <ul className="movement-card-grid">
+                  {visibleTransfers.map((movement) => (
+                    <MovementRow
+                      key={movement.id}
+                      movement={movement}
+                      products={products.items}
+                      categories={categories.items}
+                      locations={locations.items}
+                    />
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
 
           <Pagination

@@ -3,8 +3,8 @@ import type { Unit } from '../../types/models'
 import { formatNumber } from '../../utils/format'
 import { nameColor } from '../../utils/color'
 import { EmptyState } from '../common/EmptyState'
-import { ListToolbar } from '../common/ListToolbar'
 import { Pagination } from '../common/Pagination'
+import { QuickFilterPanel } from '../common/QuickFilterPanel'
 
 interface UnitListProps {
   units: Unit[]
@@ -17,13 +17,19 @@ const UNITS_PER_PAGE = 9
 
 export function UnitList({ units, productCounts, onEdit, onDelete }: UnitListProps) {
   const [query, setQuery] = useState('')
+  const [usage, setUsage] = useState<'all' | 'inuse' | 'unused'>('all')
   const [page, setPage] = useState(1)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return units
-    return units.filter((unit) => unit.name.toLowerCase().includes(q))
-  }, [units, query])
+    return units.filter((unit) => {
+      const productCount = productCounts.get(unit.id) ?? 0
+      if (usage === 'inuse' && productCount === 0) return false
+      if (usage === 'unused' && productCount > 0) return false
+      if (!q) return true
+      return unit.name.toLowerCase().includes(q)
+    })
+  }, [units, query, usage, productCounts])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / UNITS_PER_PAGE))
   const currentPage = Math.min(page, totalPages)
@@ -39,19 +45,65 @@ export function UnitList({ units, productCounts, onEdit, onDelete }: UnitListPro
   }
 
   return (
-    <>
-      <div className="card">
-        <ListToolbar
-          query={query}
-          onQueryChange={(value) => {
-            setQuery(value)
-            setPage(1)
-          }}
-          placeholder="Search units…"
-        />
+    <div className="products-layout">
+      <QuickFilterPanel
+        groups={[
+          {
+            label: 'Status',
+            kind: 'status',
+            value: usage,
+            options: [
+              { value: 'all', label: 'All' },
+              { value: 'inuse', label: 'In use', color: '#10b981' },
+              { value: 'unused', label: 'Unused', color: '#f59e0b' },
+            ],
+            onChange: (value) => {
+              setUsage(value as 'all' | 'inuse' | 'unused')
+              setPage(1)
+            },
+          },
+        ]}
+        onReset={() => {
+          setUsage('all')
+          setQuery('')
+          setPage(1)
+        }}
+      />
+
+      <div className="products-main">
+        <div className="products-toolbar">
+          <div className="search-wrap">
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
+            <input
+              type="text"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value)
+                setPage(1)
+              }}
+              placeholder="Search units…"
+              className="input products-search"
+            />
+          </div>
+        </div>
 
         {filtered.length === 0 ? (
-          <EmptyState title="No matching units" message="Try a different search." />
+          <div className="card">
+            <EmptyState title="No matching units" message="Try a different search or filter." />
+          </div>
         ) : (
           <div className="card-grid card-grid-inside">
         {visibleUnits.map((unit) => {
@@ -142,7 +194,6 @@ export function UnitList({ units, productCounts, onEdit, onDelete }: UnitListPro
       })}
         </div>
       )}
-      </div>
 
       <Pagination
         currentPage={currentPage}
@@ -151,6 +202,7 @@ export function UnitList({ units, productCounts, onEdit, onDelete }: UnitListPro
         pageSize={UNITS_PER_PAGE}
         onPageChange={setPage}
       />
-    </>
+      </div>
+    </div>
   )
 }

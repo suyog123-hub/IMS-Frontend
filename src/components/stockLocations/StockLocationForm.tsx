@@ -1,16 +1,19 @@
 import { useState, type FormEvent } from 'react'
-import type { StockLocation } from '../../types/models'
+import type { LocationChannel, StockLocation } from '../../types/models'
+import { CHANNEL_OPTIONS } from '../../utils/channels'
 import {
   validateStockLocation,
   normalizeStockLocationCode,
   type StockLocationFormErrors,
 } from '../../utils/validation'
+import { toastError } from '../../utils/toast'
 import { Field } from '../common/Field'
 
 interface StockLocationValues {
   name: string
   code: string
   parentId: string | null
+  channel: LocationChannel
 }
 
 interface StockLocationFormProps {
@@ -50,6 +53,7 @@ export function StockLocationForm({
 }: StockLocationFormProps) {
   const [name, setName] = useState(initial?.name ?? '')
   const [code, setCode] = useState(initial?.code ?? '')
+  const [channel, setChannel] = useState<LocationChannel>(initial?.channel ?? 'warehouse')
   const [parentId, setParentId] = useState(initial?.parentId ?? '')
   const [errors, setErrors] = useState<StockLocationFormErrors>({})
 
@@ -65,12 +69,14 @@ export function StockLocationForm({
     )
     if (Object.values(validationErrors).some(Boolean)) {
       setErrors(validationErrors)
+      toastError('Please fix the highlighted fields before saving.')
       return
     }
     onSubmit({
       name: name.trim(),
       code: normalizeStockLocationCode(code),
       parentId: parentId || null,
+      channel,
     })
   }
 
@@ -105,6 +111,23 @@ export function StockLocationForm({
             placeholder="e.g. BACK-A"
             className="input input-code"
           />
+        </Field>
+
+        <Field
+          label="Channel"
+          hint="which sales channel this location belongs to (used for the channel stock view)"
+        >
+          <select
+            value={channel}
+            onChange={(event) => setChannel(event.target.value as LocationChannel)}
+            className="input"
+          >
+            {CHANNEL_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </Field>
 
         <Field label="Parent Location" error={errors.parentId} hint="Optional. Create a hierarchy.">

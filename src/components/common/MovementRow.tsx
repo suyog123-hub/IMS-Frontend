@@ -22,7 +22,7 @@ export function MovementRow({ movement, products, categories, locations }: Movem
   const from = locationName(movement.fromLocationId)
   const to = locationName(movement.toLocationId)
   const label = movementLabel(movement.type)
-  const incoming = movement.type !== 'transfer-out'
+  const incoming = movement.type !== 'transfer-out' && movement.type !== 'sale'
   const sign = incoming ? '+' : '\u2212'
 
   return (
@@ -43,6 +43,16 @@ export function MovementRow({ movement, products, categories, locations }: Movem
               <span className="movement-route-label">Incoming at</span>
               <span className="movement-loc">{to ?? 'Unknown'}</span>
             </>
+          ) : movement.type === 'return-in' ? (
+            <>
+              <span className="movement-route-label">Returned at</span>
+              <span className="movement-loc">{to ?? 'Unknown'}</span>
+            </>
+          ) : movement.type === 'sale' ? (
+            <>
+              <span className="movement-route-label">Sold from</span>
+              <span className="movement-loc">{from ?? 'Unknown'}</span>
+            </>
           ) : movement.type === 'transfer-out' ? (
             <>
               <span className="movement-route-label">Out of</span>
@@ -59,6 +69,13 @@ export function MovementRow({ movement, products, categories, locations }: Movem
             </>
           )}
         </span>
+        {movement.reference || movement.reason ? (
+          <span className="movement-card-note">
+            {movement.reference ? `Ref: ${movement.reference}` : ''}
+            {movement.reference && movement.reason ? ' \u00b7 ' : ''}
+            {movement.reason ?? ''}
+          </span>
+        ) : null}
       </div>
 
       <span className={`movement-card-qty${incoming ? ' movement-card-qty-in' : ' movement-card-qty-out'}`}>

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import type { Category } from '../../types/models'
 import { validateName } from '../../utils/validation'
+import { toastError } from '../../utils/toast'
 import { Field } from '../common/Field'
 
 interface CategoryFormProps {
@@ -18,6 +19,7 @@ export function CategoryForm({ initial, onCancel, onSubmit }: CategoryFormProps)
     const validationError = validateName(name)
     if (validationError) {
       setError(validationError)
+      toastError('Please fix the highlighted field before saving.')
       return
     }
     onSubmit(name.trim())

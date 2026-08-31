@@ -5,6 +5,7 @@ import { useCollection } from '../../hooks/useCollection'
 import { categoryStorage, productStorage, productVariantStorage, removeInventoryByProduct, removeMovementsByProduct, unitStorage } from '../../storage'
 import { ConfirmDialog } from '../common/ConfirmDialog'
 import { ProductList } from './ProductList'
+import { toastError, toastSuccess } from '../../utils/toast'
 
 export function ProductsPage() {
   const navigate = useNavigate()
@@ -19,7 +20,12 @@ export function ProductsPage() {
       variants.removeWhere((variant) => variant.productId === deleteTarget.id)
       removeInventoryByProduct(deleteTarget.id)
       removeMovementsByProduct(deleteTarget.id)
-      products.remove(deleteTarget.id)
+      const removed = products.remove(deleteTarget.id)
+      if (removed) {
+        toastSuccess(`Product "${deleteTarget.name}" deleted.`)
+      } else {
+        toastError('Could not delete the product. It may no longer exist.')
+      }
     }
     setDeleteTarget(null)
   }
@@ -28,10 +34,23 @@ export function ProductsPage() {
     <section>
       <div className="page-header page-header-row">
         <div>
-          <h1>Products</h1>
-          <p>Each product references a category and a unit.</p>
+          <h1>Inventory Manager</h1>
+          <p>Search and manage all your products in one place.</p>
         </div>
         <Link to="/products/new" className="btn btn-primary">
+          <svg
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 5v14M5 12h14" />
+          </svg>
           Add Product
         </Link>
       </div>

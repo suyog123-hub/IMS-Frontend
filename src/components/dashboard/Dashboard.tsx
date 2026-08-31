@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, type CSSProperties, type ReactElement, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
   categoryStorage,
@@ -10,11 +10,81 @@ import {
 } from '../../storage'
 import { useCollection } from '../../hooks/useCollection'
 import { formatCurrency, formatNumber } from '../../utils/format'
+import { nameColor } from '../../utils/color'
+import {
+  CHANNEL_COLORS,
+  CHANNEL_LABELS,
+  locationChannel,
+} from '../../utils/channels'
+import type { LocationChannel, MovementType } from '../../types/models'
 import { MovementRow } from '../common/MovementRow'
 
 const LOW_STOCK_THRESHOLD = 10
 const LOW_STOCK_SHOWN = 6
 const RECENT_MOVEMENTS_SHOWN = 6
+
+const icon = (paths: ReactNode) => (
+  <svg
+    viewBox="0 0 24 24"
+    width="19"
+    height="19"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    {paths}
+  </svg>
+)
+
+const icons: Record<string, ReactElement> = {
+  categories: icon(<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />),
+  units: icon(<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18" />),
+  products: icon(
+    <>
+      <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
+      <path d="M3 6h18" />
+      <path d="M16 10a4 4 0 0 1-8 0" />
+    </>
+  ),
+  quantity: icon(
+    <>
+      <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+      <path d="M3.27 6.96 12 12l8.73-5.05" />
+      <path d="M12 22V12" />
+    </>
+  ),
+  value: icon(
+    <>
+      <ellipse cx="12" cy="5" rx="9" ry="3" />
+      <path d="M3 5v14a9 3 0 0 0 18 0V5" />
+      <path d="M3 12a9 3 0 0 0 18 0" />
+    </>
+  ),
+  lowStock: icon(
+    <>
+      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+    </>
+  ),
+}
+
+const MOVEMENT_MIX_COLORS: Record<MovementType, string> = {
+  inbound: '#10b981',
+  'transfer-in': '#6366f1',
+  'transfer-out': '#f59e0b',
+  sale: '#ef4444',
+  'return-in': '#8b5cf6',
+}
+
+function withinDays(iso: string, days: number): boolean {
+  const then = new Date(iso).getTime()
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
+  return then >= cutoff
+}
 
 export function Dashboard() {
   const products = useCollection(productStorage)
@@ -56,6 +126,60 @@ export function Dashboard() {
     0
   )
 
+  const addedThisWeek = products.items.filter((product) => withinDays(product.createdAt, 7)).length
+  const categoriesInUse = [...categoryNames.keys()].filter((id) =>
+    products.items.some((product) => product.categoryId === id)
+  ).length
+  const unitsInUse = products.items.reduce((set, product) => set.add(product.unitId), new Set<string>())
+    .size
+
+  const movementActivity = useMemo(() => {
+    const totals = new Map<string, number>()
+    for (const movement of movements.items) {
+      const key = new Date(movement.createdAt).toDateString()
+      totals.set(key, (totals.get(key) ?? 0) + movement.quantity)
+    }
+    const days: Array<{ key: string; label: string; value: number }> = []
+    for (let i = 6; i >= 0; i -= 1) {
+      const date = new Date()
+      date.setDate(date.getDate() - i)
+      const key = date.toDateString()
+      days.push({
+        key,
+        label: date.toLocaleDateString(undefined, { weekday: 'short' }),
+        value: totals.get(key) ?? 0,
+      })
+    }
+    const max = Math.max(...days.map((day) => day.value), 1)
+    return days.map((day) => ({ ...day, pct: Math.round((day.value / max) * 100) }))
+  }, [movements.items])
+
+  const movedThisWeek = movementActivity.reduce((sum, day) => sum + day.value, 0)
+
+  const stockByCategory = useMemo(() => {
+    const totals = new Map<string, number>()
+    for (const product of products.items) {
+      const stock = stockByProduct.get(product.id) ?? 0
+      if (stock <= 0) continue
+      totals.set(product.categoryId, (totals.get(product.categoryId) ?? 0) + stock)
+    }
+    const totalStock = [...totals.values()].reduce((sum, stock) => sum + stock, 0)
+    const rows = [...totals.entries()]
+      .map(([categoryId, stock]) => ({
+        categoryId,
+        stock,
+        name: categoryNames.get(categoryId) ?? 'Uncategorized',
+        color: nameColor(categoryNames.get(categoryId) ?? 'Uncategorized'),
+      }))
+      .sort((a, b) => b.stock - a.stock)
+      .slice(0, 6)
+      .map((row) => ({
+        ...row,
+        pct: totalStock > 0 ? Math.round((row.stock / totalStock) * 1000) / 10 : 0,
+      }))
+    return { rows, totalStock }
+  }, [products.items, stockByProduct, categoryNames])
+
   const recentMovements = useMemo(() => {
     return movements.items
       .slice()
@@ -63,13 +187,219 @@ export function Dashboard() {
       .slice(0, RECENT_MOVEMENTS_SHOWN)
   }, [movements.items])
 
+  const channelOverview = useMemo(() => {
+    const acc = new Map<LocationChannel, { units: number; products: Set<string> }>()
+    for (const location of locations.items) {
+      const channel = locationChannel(location)
+      for (const record of inventory.items) {
+        if (record.locationId !== location.id) continue
+        const entry = acc.get(channel) ?? { units: 0, products: new Set<string>() }
+        entry.units += record.quantity
+        entry.products.add(record.productId)
+        acc.set(channel, entry)
+      }
+    }
+    const rows = [...acc.entries()]
+      .map(([channel, data]) => ({
+        channel,
+        label: CHANNEL_LABELS[channel],
+        color: CHANNEL_COLORS[channel],
+        units: data.units,
+        products: data.products.size,
+      }))
+      .sort((a, b) => b.units - a.units)
+    const totalUnits = rows.reduce((sum, row) => sum + row.units, 0)
+    return rows.map((row) => ({
+      ...row,
+      pct: totalUnits > 0 ? Math.round((row.units / totalUnits) * 1000) / 10 : 0,
+    }))
+  }, [locations.items, inventory.items])
+
+  const salesReturns = useMemo(() => {
+    const soldByDay = new Map<string, number>()
+    const returnedByDay = new Map<string, number>()
+    for (const movement of movements.items) {
+      const key = new Date(movement.createdAt).toDateString()
+      if (movement.type === 'sale') {
+        soldByDay.set(key, (soldByDay.get(key) ?? 0) + movement.quantity)
+      } else if (movement.type === 'return-in') {
+        returnedByDay.set(key, (returnedByDay.get(key) ?? 0) + movement.quantity)
+      }
+    }
+    const days: Array<{
+      key: string
+      label: string
+      sold: number
+      returned: number
+      total: number
+      soldPct: number
+      returnPct: number
+    }> = []
+    for (let i = 6; i >= 0; i -= 1) {
+      const date = new Date()
+      date.setDate(date.getDate() - i)
+      const key = date.toDateString()
+      const sold = soldByDay.get(key) ?? 0
+      const returned = returnedByDay.get(key) ?? 0
+      days.push({
+        key,
+        label: date.toLocaleDateString(undefined, { weekday: 'short' }),
+        sold,
+        returned,
+        total: sold + returned,
+        soldPct: 0,
+        returnPct: 0,
+      })
+    }
+    const max = Math.max(...days.map((day) => day.total), 1)
+    return days.map((day) => ({
+      ...day,
+      soldPct: Math.round((day.sold / max) * 100),
+      returnPct: Math.round((day.returned / max) * 100),
+    }))
+  }, [movements.items])
+  const hasSalesActivity = salesReturns.some((day) => day.total > 0)
+
+  const topSellers = useMemo(() => {
+    const soldByProduct = new Map<string, number>()
+    for (const movement of movements.items) {
+      if (movement.type !== 'sale') continue
+      soldByProduct.set(
+        movement.productId,
+        (soldByProduct.get(movement.productId) ?? 0) + movement.quantity
+      )
+    }
+    const rows = [...soldByProduct.entries()]
+      .map(([productId, qty]) => {
+        const product = products.items.find((item) => item.id === productId)
+        const categoryName = categoryNames.get(product?.categoryId ?? '') ?? 'Uncategorized'
+        return {
+          productId,
+          name: product?.name ?? 'Unknown product',
+          qty,
+          color: nameColor(categoryName),
+        }
+      })
+      .sort((a, b) => b.qty - a.qty)
+      .slice(0, 5)
+    const max = Math.max(...rows.map((row) => row.qty), 1)
+    return rows.map((row) => ({ ...row, pct: Math.round((row.qty / max) * 100) }))
+  }, [movements.items, products.items, categoryNames])
+
+  const movementMix = useMemo(() => {
+    const counts: Array<{ type: MovementType; label: string; color: string; count: number }> = [
+      { type: 'inbound', label: 'Inbound', color: MOVEMENT_MIX_COLORS.inbound, count: 0 },
+      { type: 'transfer-in', label: 'Transfer In', color: MOVEMENT_MIX_COLORS['transfer-in'], count: 0 },
+      { type: 'transfer-out', label: 'Transfer Out', color: MOVEMENT_MIX_COLORS['transfer-out'], count: 0 },
+      { type: 'sale', label: 'Sold', color: MOVEMENT_MIX_COLORS.sale, count: 0 },
+      { type: 'return-in', label: 'Return', color: MOVEMENT_MIX_COLORS['return-in'], count: 0 },
+    ]
+    for (const movement of movements.items) {
+      if (!withinDays(movement.createdAt, 30)) continue
+      const row = counts.find((entry) => entry.type === movement.type)
+      if (row) row.count += movement.quantity
+    }
+    const rows = counts.filter((entry) => entry.count > 0)
+    const total = rows.reduce((sum, row) => sum + row.count, 0)
+    return { rows, total }
+  }, [movements.items])
+
+  const movementMixSegments = useMemo(() => {
+    const perim = 2 * Math.PI * 50
+    const parts: Array<{ row: (typeof movementMix.rows)[number]; start: number }> = []
+    let start = 0
+    for (const row of movementMix.rows) {
+      parts.push({ row, start })
+      start += (row.count / movementMix.total) * perim
+    }
+    return parts.map(({ row, start: offset }) => {
+      const length = (row.count / movementMix.total) * perim
+      return (
+        <circle
+          key={row.type}
+          cx="60"
+          cy="60"
+          r="50"
+          fill="none"
+          strokeWidth="16"
+          stroke={row.color}
+          strokeDasharray={`${length} ${perim - length}`}
+          strokeDashoffset={-offset}
+          transform="rotate(-90 60 60)"
+        />
+      )
+    })
+  }, [movementMix])
+
+  const valueByCategory = useMemo(() => {
+    const totals = new Map<string, number>()
+    for (const product of products.items) {
+      const stock = stockByProduct.get(product.id) ?? 0
+      if (stock <= 0) continue
+      totals.set(product.categoryId, (totals.get(product.categoryId) ?? 0) + product.costPrice * stock)
+    }
+    const rows = [...totals.entries()]
+      .map(([categoryId, value]) => ({
+        categoryId,
+        value,
+        name: categoryNames.get(categoryId) ?? 'Uncategorized',
+        color: nameColor(categoryNames.get(categoryId) ?? 'Uncategorized'),
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 6)
+    const totalValue = rows.reduce((sum, row) => sum + row.value, 0)
+    return {
+      rows: rows.map((row) => ({
+        ...row,
+        pct: totalValue > 0 ? Math.round((row.value / totalValue) * 1000) / 10 : 0,
+      })),
+      totalValue,
+    }
+  }, [products.items, stockByProduct, categoryNames])
+
   const cardsData = [
-    { label: 'Total Categories', value: categories.items.length, to: '/categories' },
-    { label: 'Total Units', value: units.items.length, to: '/units' },
-    { label: 'Total Products', value: products.items.length, to: '/products' },
-    { label: 'Total Quantity', value: formatNumber(totalQuantity), to: '/inventory' },
-    { label: 'Inventory Value', value: formatCurrency(inventoryValue), to: '/inventory' },
-    { label: 'Low Stock', value: lowStock.length, to: '/inventory' },
+    {
+      label: 'Total Categories',
+      value: formatNumber(categories.items.length),
+      to: '/categories',
+      iconKey: 'categories',
+      caption: `${categoriesInUse} used by products`,
+    },
+    {
+      label: 'Total Units',
+      value: formatNumber(units.items.length),
+      to: '/units',
+      iconKey: 'units',
+      caption: `${unitsInUse} used by products`,
+    },
+    {
+      label: 'Total Products',
+      value: formatNumber(products.items.length),
+      to: '/products',
+      iconKey: 'products',
+      caption: `${addedThisWeek} added this week`,
+    },
+    {
+      label: 'Total Quantity',
+      value: formatNumber(totalQuantity),
+      to: '/inventory',
+      iconKey: 'quantity',
+      caption: `${formatNumber(movedThisWeek)} units moved this week`,
+    },
+    {
+      label: 'Inventory Value',
+      value: formatCurrency(inventoryValue),
+      to: '/inventory',
+      iconKey: 'value',
+      caption: 'valued at cost price',
+    },
+    {
+      label: 'Low Stock',
+      value: formatNumber(lowStock.length),
+      to: '/inventory',
+      iconKey: 'lowStock',
+      caption: `below ${LOW_STOCK_THRESHOLD} units each`,
+    },
   ]
 
   return (
@@ -82,10 +412,248 @@ export function Dashboard() {
       <div className="stat-grid">
         {cardsData.map((card) => (
           <Link key={card.label} to={card.to} className="stat-card">
+            <span className="stat-icon">{icons[card.iconKey]}</span>
             <span className="stat-label">{card.label}</span>
             <span className="stat-value">{card.value}</span>
+            <span className="stat-delta">{card.caption}</span>
           </Link>
         ))}
+      </div>
+
+      <div className="dashboard-charts">
+        <div className="card dashboard-chart-card">
+          <div className="dashboard-section-header">
+            <h2 className="dashboard-section-title">Movement Mix</h2>
+            <span className="dashboard-chart-sub">Last 30 days · units moved</span>
+          </div>
+          {!movementMix.total ? (
+            <p className="dashboard-empty">
+              No stock movements in the last 30 days. Record movements to see the mix here.
+            </p>
+          ) : (
+            <div className="donut-wrap">
+              <div className="donut">
+                <svg viewBox="0 0 120 120" className="donut-svg">
+                  {movementMixSegments}
+                </svg>
+                <div className="donut-center">
+                  <strong>{formatNumber(movementMix.total)}</strong>
+                  <span>units</span>
+                </div>
+              </div>
+              <div className="donut-legend">
+                {movementMix.rows.map((row) => (
+                  <span className="donut-legend-item" key={row.type}>
+                    <span className="donut-legend-dot" style={{ '--c': row.color } as CSSProperties} />
+                    {row.label}
+                    <strong>{formatNumber(row.count)}</strong>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="card dashboard-chart-card">
+          <div className="dashboard-section-header">
+            <h2 className="dashboard-section-title">Inventory Value by Category</h2>
+            <span className="dashboard-chart-sub">{formatCurrency(valueByCategory.totalValue)} at cost</span>
+          </div>
+          {valueByCategory.totalValue === 0 ? (
+            <p className="dashboard-empty">
+              Stock products to see how inventory value is split across categories.
+            </p>
+          ) : (
+            <div className="category-bars">
+              {valueByCategory.rows.map((row) => (
+                <div className="category-bar-row" key={row.categoryId}>
+                  <span className="category-bar-label" title={row.name}>
+                    {row.name}
+                  </span>
+                  <span className="category-bar-track">
+                    <span
+                      className="category-bar-fill"
+                      style={{ width: `${row.pct}%`, '--c': row.color } as CSSProperties}
+                    />
+                  </span>
+                  <span className="category-bar-value">
+                    {formatCurrency(row.value)} · {row.pct}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="dashboard-charts">
+        <div className="card dashboard-chart-card">
+          <div className="dashboard-section-header">
+            <h2 className="dashboard-section-title">Movement Activity</h2>
+            <span className="dashboard-chart-sub">Last 7 days</span>
+          </div>
+          {movedThisWeek === 0 ? (
+            <p className="dashboard-empty">
+              No movement yet. Receive or transfer stock to see activity here.
+            </p>
+          ) : (
+            <div className="chart-bars">
+              {movementActivity.map((day) => (
+                <div className="chart-bar-wrap" key={day.key}>
+                  <span className="chart-value">{formatNumber(day.value)}</span>
+                  <span className="chart-bar" style={{ height: `${Math.max(7, day.pct)}%` }} />
+                  <span className="chart-days">{day.label}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="card dashboard-chart-card">
+          <div className="dashboard-section-header">
+            <h2 className="dashboard-section-title">Stock by Category</h2>
+            <span className="dashboard-chart-sub">{formatNumber(stockByCategory.totalStock)} units</span>
+          </div>
+          {stockByCategory.totalStock === 0 ? (
+            <p className="dashboard-empty">
+              Stock products to see the distribution across categories.
+            </p>
+          ) : (
+            <div className="category-bars">
+              {stockByCategory.rows.map((row) => (
+                <div className="category-bar-row" key={row.categoryId}>
+                  <span className="category-bar-label" title={row.name}>
+                    {row.name}
+                  </span>
+                  <span className="category-bar-track">
+                    <span
+                      className="category-bar-fill"
+                      style={{ width: `${row.pct}%`, '--c': row.color } as CSSProperties}
+                    />
+                  </span>
+                  <span className="category-bar-value">
+                    {formatNumber(row.stock)} · {row.pct}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="dashboard-charts">
+        <div className="card dashboard-chart-card">
+          <div className="dashboard-section-header">
+            <h2 className="dashboard-section-title">Sales vs Returns</h2>
+            <span className="dashboard-chart-sub">Last 7 days</span>
+          </div>
+          {!hasSalesActivity ? (
+            <p className="dashboard-empty">
+              Record sales or returns to see the daily sold vs returned trend here.
+            </p>
+          ) : (
+            <div className="chart-grouped">
+              <div className="grouped-bars">
+                {salesReturns.map((day) => (
+                  <div className="chart-groupday" key={day.key}>
+                    <span className="chart-value">{formatNumber(day.total)}</span>
+                    <div className="chart-group-bars">
+                      <span
+                        className="chart-bar chart-bar-sale"
+                        style={{ height: `${Math.max(day.sold > 0 ? 6 : 2, day.soldPct)}%` }}
+                        title={`Sold: ${formatNumber(day.sold)}`}
+                      />
+                      <span
+                        className="chart-bar chart-bar-return"
+                        style={{ height: `${Math.max(day.returned > 0 ? 6 : 2, day.returnPct)}%` }}
+                        title={`Returned: ${formatNumber(day.returned)}`}
+                      />
+                    </div>
+                    <span className="chart-days">{day.label}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="chart-legend">
+                <span className="chart-legend-item">
+                  <span className="chart-legend-dot" style={{ background: '#ef4444' }} />
+                  Sold
+                </span>
+                <span className="chart-legend-item">
+                  <span className="chart-legend-dot" style={{ background: '#8b5cf6' }} />
+                  Returned
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="card dashboard-chart-card">
+          <div className="dashboard-section-header">
+            <h2 className="dashboard-section-title">Top Selling Products</h2>
+            <span className="dashboard-chart-sub">By units sold</span>
+          </div>
+          {topSellers.length === 0 ? (
+            <p className="dashboard-empty">
+              No sales recorded yet. Record a sale to see your best sellers here.
+            </p>
+          ) : (
+            <div className="category-bars">
+              {topSellers.map((row, index) => (
+                <div className="category-bar-row" key={row.productId}>
+                  <span className="category-bar-label" title={row.name}>
+                    {index + 1}. {row.name}
+                  </span>
+                  <span className="category-bar-track">
+                    <span
+                      className="category-bar-fill"
+                      style={{ width: `${row.pct}%`, '--c': row.color } as CSSProperties}
+                    />
+                  </span>
+                  <span className="category-bar-value">{formatNumber(row.qty)} sold</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="card dashboard-section">
+        <div className="dashboard-section-header">
+          <h2 className="dashboard-section-title">Stock by Channel</h2>
+          <Link to="/inventory" className="dashboard-section-link">
+            View inventory
+          </Link>
+        </div>
+
+        {channelOverview.length === 0 ? (
+          <p className="dashboard-empty">
+            No stock yet. Assign a channel to your stock locations to see stock per sales channel.
+          </p>
+        ) : (
+          <div className="channel-overview">
+            {channelOverview.map((row) => (
+              <div key={row.channel} className="channel-row">
+                <span className="channel-row-head">
+                  <span className="channel-row-dot" style={{ '--c': row.color } as CSSProperties} />
+                  <span>
+                    <span className="channel-row-name">{row.label}</span>
+                    <span className="channel-row-sub">{formatNumber(row.products)} products</span>
+                  </span>
+                </span>
+                <span className="channel-row-track">
+                  <span
+                    className="channel-row-fill"
+                    style={{ width: `${Math.max(2, row.pct)}%`, '--c': row.color } as CSSProperties}
+                  />
+                </span>
+                <span className="channel-row-value">
+                  <strong>{formatNumber(row.units)}</strong>
+                  <span>units · {row.pct}%</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="card dashboard-section">

@@ -1,10 +1,11 @@
 import { useMemo, useState, type CSSProperties } from 'react'
-import type { StockLocation } from '../../types/models'
+import type { LocationChannel, StockLocation } from '../../types/models'
 import { nameColor } from '../../utils/color'
 import { formatNumber } from '../../utils/format'
+import { CHANNEL_COLORS, CHANNEL_LABELS, CHANNEL_OPTIONS, locationChannel } from '../../utils/channels'
 import { EmptyState } from '../common/EmptyState'
-import { ListToolbar } from '../common/ListToolbar'
 import { Pagination } from '../common/Pagination'
+import { QuickFilterPanel } from '../common/QuickFilterPanel'
 
 interface StockLocationListProps {
   locations: StockLocation[]
@@ -26,7 +27,8 @@ export function StockLocationList({
   onDelete,
 }: StockLocationListProps) {
   const [query, setQuery] = useState('')
-  const [parentId, setParentId] = useState('all')
+  const [locFilter, setLocFilter] = useState('all')
+  const [channelFilter, setChannelFilter] = useState<'all' | LocationChannel>('all')
   const [page, setPage] = useState(1)
 
   const parentOptions = useMemo(() => {
@@ -43,8 +45,13 @@ export function StockLocationList({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return locations.filter((location) => {
-      if (parentId === 'top' ? location.parentId !== null : parentId !== 'all' && location.parentId !== parentId) {
-        return false
+      if (channelFilter !== 'all' && locationChannel(location) !== channelFilter) return false
+      if (locFilter === 'top') {
+        if (location.parentId !== null) return false
+      } else if (locFilter === 'child') {
+        if (location.parentId === null) return false
+      } else if (locFilter !== 'all') {
+        if (location.parentId !== locFilter) return false
       }
       if (!q) return true
       const name = location.name.toLowerCase()
@@ -52,7 +59,7 @@ export function StockLocationList({
       const parent = location.parentId ? (parentNames.get(location.parentId) ?? '').toLowerCase() : ''
       return name.includes(q) || code.includes(q) || parent.includes(q)
     })
-  }, [locations, query, parentId, parentNames])
+  }, [locations, query, locFilter, channelFilter, parentNames])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / LOCATIONS_PER_PAGE))
   const currentPage = Math.min(page, totalPages)
@@ -71,33 +78,84 @@ export function StockLocationList({
   }
 
   return (
-    <>
-      <div className="card">
-        <ListToolbar
-          query={query}
-          onQueryChange={(value) => {
-            setQuery(value)
-            setPage(1)
-          }}
-          placeholder="Search by name, code, or parent…"
-          filters={[
-            {
-              value: parentId,
-              onChange: (value) => {
-                setParentId(value)
-                setPage(1)
-              },
-              options: [
-                { value: 'all', label: 'All locations' },
-                { value: 'top', label: 'Top level' },
-                ...parentOptions,
-              ],
+    <div className="products-layout">
+      <QuickFilterPanel
+        groups={[
+          {
+            label: 'Level',
+            kind: 'level',
+            value: locFilter,
+            options: [
+              { value: 'all', label: 'All' },
+              { value: 'top', label: 'Top level' },
+              { value: 'child', label: 'Child', color: '#6366f1' },
+              ...parentOptions.map((option) => ({ value: option.value, label: `In ${option.label}` })),
+            ],
+            onChange: (value) => {
+              setLocFilter(value)
+              setPage(1)
             },
-          ]}
-        />
+          },
+          {
+            label: 'Channel',
+            kind: 'location',
+            value: channelFilter,
+            options: [
+              { value: 'all', label: 'All' },
+              ...CHANNEL_OPTIONS.map((option) => ({
+                value: option.value,
+                label: option.label,
+                color: CHANNEL_COLORS[option.value],
+              })),
+            ],
+            onChange: (value) => {
+              setChannelFilter(value as 'all' | LocationChannel)
+              setPage(1)
+            },
+          },
+        ]}
+        onReset={() => {
+          setLocFilter('all')
+          setChannelFilter('all')
+          setQuery('')
+          setPage(1)
+        }}
+      />
+
+      <div className="products-main">
+        <div className="products-toolbar">
+          <div className="search-wrap">
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
+            <input
+              type="text"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value)
+                setPage(1)
+              }}
+              placeholder="Search by name, code, or parent…"
+              className="input products-search"
+            />
+          </div>
+        </div>
 
         {filtered.length === 0 ? (
-          <EmptyState title="No matching locations" message="Try a different search or filter." />
+          <div className="card">
+            <EmptyState title="No matching locations" message="Try a different search or filter." />
+          </div>
         ) : (
           <div className="card-grid card-grid-inside">
         {visibleLocations.map((location) => {
@@ -162,6 +220,12 @@ export function StockLocationList({
                   {location.name}
                 </h3>
                 <div className="location-meta">
+                  <span
+                    className="loc-channel"
+                    style={{ '--c': CHANNEL_COLORS[locationChannel(location)] } as CSSProperties}
+                  >
+                    {CHANNEL_LABELS[locationChannel(location)]}
+                  </span>
                   <span className="location-code">{location.code}</span>
                   {location.parentId ? (
                     <span className="location-parent" title="Parent location">
@@ -195,7 +259,6 @@ export function StockLocationList({
           })}
         </div>
       )}
-      </div>
 
       <Pagination
         currentPage={currentPage}
@@ -204,6 +267,7 @@ export function StockLocationList({
         pageSize={LOCATIONS_PER_PAGE}
         onPageChange={setPage}
       />
-    </>
+      </div>
+    </div>
   )
 }

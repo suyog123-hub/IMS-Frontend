@@ -97,3 +97,65 @@ export function transferStock(
   })
   return { ok: true, movement: transferOut }
 }
+
+export function recordSale(
+  productId: string,
+  locationId: string,
+  quantity: number,
+  reference = ''
+): TransferResult {
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    return { ok: false, error: 'Quantity must be a positive whole number.' }
+  }
+
+  const source = inventoryStorage
+    .getAll()
+    .find((item) => item.productId === productId && item.locationId === locationId)
+  if (!source || source.quantity < quantity) {
+    return { ok: false, error: 'Not enough stock at this location.' }
+  }
+
+  inventoryStorage.update(source.id, { quantity: source.quantity - quantity })
+
+  const sale = base.create({
+    productId,
+    fromLocationId: locationId,
+    toLocationId: null,
+    quantity,
+    type: 'sale',
+    reference: reference.trim() || undefined,
+  })
+  return { ok: true, movement: sale }
+}
+
+export function recordReturn(
+  productId: string,
+  locationId: string,
+  quantity: number,
+  reference = '',
+  reason = ''
+): TransferResult {
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    return { ok: false, error: 'Quantity must be a positive whole number.' }
+  }
+
+  const target = inventoryStorage
+    .getAll()
+    .find((item) => item.productId === productId && item.locationId === locationId)
+  if (target) {
+    inventoryStorage.update(target.id, { quantity: target.quantity + quantity })
+  } else {
+    inventoryStorage.create({ productId, locationId, quantity })
+  }
+
+  const returned = base.create({
+    productId,
+    fromLocationId: null,
+    toLocationId: locationId,
+    quantity,
+    type: 'return-in',
+    reference: reference.trim() || undefined,
+    reason: reason.trim() || undefined,
+  })
+  return { ok: true, movement: returned }
+}

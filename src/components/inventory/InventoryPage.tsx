@@ -3,9 +3,10 @@ import type { Inventory, Product } from '../../types/models'
 import { useCollection } from '../../hooks/useCollection'
 import { inventoryStorage, categoryStorage, productStorage, stockLocationStorage } from '../../storage'
 import { formatNumber } from '../../utils/format'
+import { nameColor } from '../../utils/color'
 import { EmptyState } from '../common/EmptyState'
-import { ListToolbar } from '../common/ListToolbar'
 import { Pagination } from '../common/Pagination'
+import { QuickFilterPanel } from '../common/QuickFilterPanel'
 import { InventoryRow } from './InventoryRow'
 
 const INVENTORY_PER_PAGE = 9
@@ -23,6 +24,7 @@ export function InventoryPage() {
   const categories = useCollection(categoryStorage)
   const [query, setQuery] = useState('')
   const [categoryId, setCategoryId] = useState('all')
+  const [stockStatus, setStockStatus] = useState<'all' | 'in' | 'low' | 'out'>('all')
   const [page, setPage] = useState(1)
 
   const locationNames = useMemo(() => {
@@ -59,12 +61,17 @@ export function InventoryPage() {
     const q = query.trim().toLowerCase()
     return result.filter((row) => {
       if (categoryId !== 'all' && row.product.categoryId !== categoryId) return false
+      if (stockStatus !== 'all') {
+        const totalQty = row.records.reduce((sum, record) => sum + record.quantity, 0)
+        const state = totalQty > 50 ? 'in' : totalQty >= 10 ? 'low' : 'out'
+        if (state !== stockStatus) return false
+      }
       if (!q) return true
       return (
         row.product.name.toLowerCase().includes(q) || row.categoryName.toLowerCase().includes(q)
       )
     })
-  }, [inventory, products, categoryNames, query, categoryId])
+  }, [inventory, products, categoryNames, query, categoryId, stockStatus])
 
   const distinctProducts = rows.length
   const totalUnits = rows.reduce(
@@ -99,47 +106,101 @@ export function InventoryPage() {
         </div>
       </div>
 
-<div className="card inventory-card">
-          <ListToolbar
-            query={query}
-            onQueryChange={(value) => {
-              setQuery(value)
-              setPage(1)
-            }}
-            placeholder="Search by product or category…"
-            filters={[
-              {
-                value: categoryId,
-                onChange: (value) => {
-                  setCategoryId(value)
-                  setPage(1)
-                },
-                options: [
-                  { value: 'all', label: 'All categories' },
-                  ...categories.items.map((category) => ({ value: category.id, label: category.name })),
-                ],
+<div className="products-layout">
+        <QuickFilterPanel
+          groups={[
+            {
+              label: 'Category',
+              kind: 'category',
+              value: categoryId,
+              options: [
+                { value: 'all', label: 'All' },
+                ...categories.items.map((category) => ({
+                  value: category.id,
+                  label: category.name,
+                  color: nameColor(category.name),
+                })),
+              ],
+              onChange: (value) => {
+                setCategoryId(value)
+                setPage(1)
               },
-            ]}
-          />
+            },
+            {
+              label: 'Stock Status',
+              kind: 'tag',
+              value: stockStatus,
+              options: [
+                { value: 'all', label: 'All' },
+                { value: 'in', label: 'In Stock', color: '#10b981' },
+                { value: 'low', label: 'Low Stock', color: '#f59e0b' },
+                { value: 'out', label: 'Out of Stock', color: '#ef4444' },
+              ],
+              onChange: (value) => {
+                setStockStatus(value as 'all' | 'in' | 'low' | 'out')
+                setPage(1)
+              },
+            },
+          ]}
+          onReset={() => {
+            setCategoryId('all')
+            setStockStatus('all')
+            setQuery('')
+            setPage(1)
+          }}
+        />
 
-        {rows.length === 0 ? (
-          <EmptyState
-            title="No stock records"
-            message="Products are automatically stocked in the Main Warehouse as soon as they are created."
-          />
-        ) : (
-          <div className="inventory-card-grid">
-            {visibleRows.map((row) => (
-              <InventoryRow
-                key={row.product.id}
-                product={row.product}
-                categoryName={row.categoryName}
-                records={row.records}
-                locationNames={locationNames}
+        <div className="products-main">
+          <div className="products-toolbar">
+            <div className="search-wrap">
+              <svg
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <input
+                type="text"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value)
+                  setPage(1)
+                }}
+                placeholder="Search by product or category…"
+                className="input products-search"
               />
-            ))}
+            </div>
           </div>
-        )}
+
+          {rows.length === 0 ? (
+            <div className="card">
+              <EmptyState
+                title="No stock records"
+                message="Products are automatically stocked in the Main Warehouse as soon as they are created."
+              />
+            </div>
+          ) : (
+            <div className="inventory-card-grid">
+              {visibleRows.map((row) => (
+                <InventoryRow
+                  key={row.product.id}
+                  product={row.product}
+                  categoryName={row.categoryName}
+                  records={row.records}
+                  locationNames={locationNames}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <Pagination

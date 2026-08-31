@@ -23,6 +23,8 @@ export {
   removeMovementsByProduct,
   recordInbound,
   transferStock,
+  recordSale,
+  recordReturn,
   migrateLegacyTransfers,
   type TransferResult,
 } from './movementStorage'

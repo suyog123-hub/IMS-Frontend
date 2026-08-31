@@ -3,8 +3,8 @@ import type { Category } from '../../types/models'
 import { formatNumber } from '../../utils/format'
 import { nameColor } from '../../utils/color'
 import { EmptyState } from '../common/EmptyState'
-import { ListToolbar } from '../common/ListToolbar'
 import { Pagination } from '../common/Pagination'
+import { QuickFilterPanel } from '../common/QuickFilterPanel'
 
 interface CategoryListProps {
   categories: Category[]
@@ -17,13 +17,19 @@ const CATEGORIES_PER_PAGE = 9
 
 export function CategoryList({ categories, productCounts, onEdit, onDelete }: CategoryListProps) {
   const [query, setQuery] = useState('')
+  const [usage, setUsage] = useState<'all' | 'inuse' | 'unused'>('all')
   const [page, setPage] = useState(1)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return categories
-    return categories.filter((category) => category.name.toLowerCase().includes(q))
-  }, [categories, query])
+    return categories.filter((category) => {
+      const productCount = productCounts.get(category.id) ?? 0
+      if (usage === 'inuse' && productCount === 0) return false
+      if (usage === 'unused' && productCount > 0) return false
+      if (!q) return true
+      return category.name.toLowerCase().includes(q)
+    })
+  }, [categories, query, usage, productCounts])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / CATEGORIES_PER_PAGE))
   const currentPage = Math.min(page, totalPages)
@@ -42,19 +48,65 @@ export function CategoryList({ categories, productCounts, onEdit, onDelete }: Ca
   }
 
   return (
-    <>
-      <div className="card">
-        <ListToolbar
-          query={query}
-          onQueryChange={(value) => {
-            setQuery(value)
-            setPage(1)
-          }}
-          placeholder="Search categories…"
-        />
+    <div className="products-layout">
+      <QuickFilterPanel
+        groups={[
+          {
+            label: 'Status',
+            kind: 'status',
+            value: usage,
+            options: [
+              { value: 'all', label: 'All' },
+              { value: 'inuse', label: 'In use', color: '#10b981' },
+              { value: 'unused', label: 'Unused', color: '#f59e0b' },
+            ],
+            onChange: (value) => {
+              setUsage(value as 'all' | 'inuse' | 'unused')
+              setPage(1)
+            },
+          },
+        ]}
+        onReset={() => {
+          setUsage('all')
+          setQuery('')
+          setPage(1)
+        }}
+      />
+
+      <div className="products-main">
+        <div className="products-toolbar">
+          <div className="search-wrap">
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="m21 21-4.3-4.3" />
+            </svg>
+            <input
+              type="text"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value)
+                setPage(1)
+              }}
+              placeholder="Search categories…"
+              className="input products-search"
+            />
+          </div>
+        </div>
 
         {filtered.length === 0 ? (
-          <EmptyState title="No matching categories" message="Try a different search." />
+          <div className="card">
+            <EmptyState title="No matching categories" message="Try a different search or filter." />
+          </div>
         ) : (
           <div className="card-grid card-grid-inside">
         {visibleCategories.map((category) => {
@@ -143,7 +195,6 @@ export function CategoryList({ categories, productCounts, onEdit, onDelete }: Ca
       })}
         </div>
       )}
-      </div>
 
       <Pagination
         currentPage={currentPage}
@@ -152,6 +203,7 @@ export function CategoryList({ categories, productCounts, onEdit, onDelete }: Ca
         pageSize={CATEGORIES_PER_PAGE}
         onPageChange={setPage}
       />
-    </>
+      </div>
+    </div>
   )
 }

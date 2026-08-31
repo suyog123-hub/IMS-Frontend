@@ -5,6 +5,7 @@ import { useCollection } from '../../hooks/useCollection'
 import { categoryStorage, productStorage, countProductsByCategory } from '../../storage'
 import { ConfirmDialog } from '../common/ConfirmDialog'
 import { CategoryList } from './CategoryList'
+import { toastError, toastSuccess } from '../../utils/toast'
 
 interface BlockedCategory {
   category: Category
@@ -36,7 +37,14 @@ export function CategoriesPage() {
   }
 
   const confirmDelete = () => {
-    if (deleteTarget) remove(deleteTarget.id)
+    if (deleteTarget) {
+      const removed = remove(deleteTarget.id)
+      if (removed) {
+        toastSuccess(`Category "${deleteTarget.name}" deleted.`)
+      } else {
+        toastError('Could not delete the category. It may no longer exist.')
+      }
+    }
     setDeleteTarget(null)
   }
 

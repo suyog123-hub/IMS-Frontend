@@ -7,9 +7,11 @@ import {
   stockLocationStorage,
 } from '../../storage'
 import { formatNumber } from '../../utils/format'
+import { nameColor } from '../../utils/color'
 import type { MovementType } from '../../types/models'
 import { EmptyState } from '../common/EmptyState'
 import { Pagination } from '../common/Pagination'
+import { QuickFilterPanel } from '../common/QuickFilterPanel'
 import { MovementRow } from '../common/MovementRow'
 
 const MOVEMENTS_PER_PAGE = 10
@@ -59,6 +61,8 @@ export function MovementsPage() {
   const transferInCount = filtered.filter((movement) => movement.type === 'transfer-in').length
   const transferOutCount = filtered.filter((movement) => movement.type === 'transfer-out').length
   const inboundCount = filtered.filter((movement) => movement.type === 'inbound').length
+  const saleCount = filtered.filter((movement) => movement.type === 'sale').length
+  const returnCount = filtered.filter((movement) => movement.type === 'return-in').length
 
   return (
     <section>
@@ -84,68 +88,113 @@ export function MovementsPage() {
           <span className="inventory-stat-value">{formatNumber(inboundCount)}</span>
           <span className="inventory-stat-label">Inbound</span>
         </div>
+        <div className="inventory-stat">
+          <span className="inventory-stat-value">{formatNumber(saleCount)}</span>
+          <span className="inventory-stat-label">Sold</span>
+        </div>
+        <div className="inventory-stat">
+          <span className="inventory-stat-value">{formatNumber(returnCount)}</span>
+          <span className="inventory-stat-label">Returns</span>
+        </div>
       </div>
 
-      <div className="card inventory-card">
-        <div className="movement-filters">
-          <input
-            type="text"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value)
-              setPage(1)
-            }}
-            placeholder="Search by product or category…"
-            className="input inventory-search"
-          />
-          <select
-            value={type}
-            onChange={(event) => {
-              setType(event.target.value as 'all' | MovementType)
-              setPage(1)
-            }}
-            className="input movement-filter-select"
-          >
-            <option value="all">All types</option>
-            <option value="transfer-in">Transfer In</option>
-            <option value="transfer-out">Transfer Out</option>
-            <option value="inbound">Inbound</option>
-          </select>
-          <select
-            value={locationId}
-            onChange={(event) => {
-              setLocationId(event.target.value)
-              setPage(1)
-            }}
-            className="input movement-filter-select"
-          >
-            <option value="all">All locations</option>
-            {locations.items.map((location) => (
-              <option key={location.id} value={location.id}>
-                {location.name}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div className="products-layout">
+        <QuickFilterPanel
+          groups={[
+            {
+              label: 'Type',
+              kind: 'type',
+              value: type,
+              options: [
+                { value: 'all', label: 'All' },
+                { value: 'inbound', label: 'Inbound', color: '#10b981' },
+                { value: 'transfer-in', label: 'Transfer In', color: '#6366f1' },
+                { value: 'transfer-out', label: 'Transfer Out', color: '#f59e0b' },
+                { value: 'sale', label: 'Sold', color: '#ef4444' },
+                { value: 'return-in', label: 'Return', color: '#8b5cf6' },
+              ],
+              onChange: (value) => {
+                setType(value as 'all' | MovementType)
+                setPage(1)
+              },
+            },
+            {
+              label: 'Location',
+              kind: 'location',
+              value: locationId,
+              options: [
+                { value: 'all', label: 'All' },
+                ...locations.items.map((location) => ({
+                  value: location.id,
+                  label: location.name,
+                  color: nameColor(location.name),
+                })),
+              ],
+              onChange: (value) => {
+                setLocationId(value)
+                setPage(1)
+              },
+            },
+          ]}
+          onReset={() => {
+            setType('all')
+            setLocationId('all')
+            setQuery('')
+            setPage(1)
+          }}
+        />
 
-        {visible.length === 0 ? (
-          <EmptyState
-            title="No movements found"
-            message="Stock movements appear here when stock is received or transferred between locations."
-          />
-        ) : (
-          <ul className="movement-card-grid">
-            {visible.map((movement) => (
-              <MovementRow
-                key={movement.id}
-                movement={movement}
-                products={products.items}
-                categories={categories.items}
-                locations={locations.items}
+        <div className="products-main">
+          <div className="products-toolbar">
+            <div className="search-wrap">
+              <svg
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <input
+                type="text"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value)
+                  setPage(1)
+                }}
+                placeholder="Search by product or category…"
+                className="input products-search"
               />
-            ))}
-          </ul>
-        )}
+            </div>
+          </div>
+
+          {visible.length === 0 ? (
+            <div className="card">
+              <EmptyState
+                title="No movements found"
+                message="Stock movements appear here when stock is received or transferred between locations."
+              />
+            </div>
+          ) : (
+            <ul className="movement-card-grid">
+              {visible.map((movement) => (
+                <MovementRow
+                  key={movement.id}
+                  movement={movement}
+                  products={products.items}
+                  categories={categories.items}
+                  locations={locations.items}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
 
       <Pagination

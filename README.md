@@ -4,15 +4,16 @@ A frontend-only inventory management demo built with **React**, **Vite**, and **
 
 ## Features
 
-- **Dashboard** — overview cards (categories, units, products, total quantity, inventory value, low-stock count), a low-stock alert, and recent stock movements.
+- **Dashboard** — overview cards (categories, units, products, total quantity, inventory value, low-stock count), dynamic charts (movement mix donut, sales vs returns, top sellers, inventory value by category, stock by category/channel), a low-stock alert, and recent stock movements.
 - **Categories & Units** — master data used by products; protected from deletion while still in use.
 - **Products** — full CRUD with image, category, unit, description, cost price, discount percentage, and auto-calculated selling price. Optional product variants (e.g. size/color) that can inherit the product's name, cost price, and discount when left blank.
-- **Stock Locations** — hierarchical warehouses/sub-locations. A fixed **Main Warehouse** is seeded and used as the default stocking location.
+- **Stock Locations** — hierarchical warehouses/sub-locations with a **sales channel** (warehouse, storefront, pop-up, or online — e.g. Shopee / LINE). A fixed **Main Warehouse** is seeded and used as the default stocking location.
 - **Inventory** — per-product stock across locations, with product images and location detail modal.
 - **Stock Transfers** — move stock between locations with availability checks; every transfer is logged.
-- **Stock Movements** — full movement history (inbound, transfer-in, transfer-out).
-- **Search & Filtering** — every list page has search, and most include dropdown filters (category, parent location, type, location).
-- **Pagination** — consistent pagination on all list pages.
+- **Sales** — record stock sold from any channel; every sale decrements inventory (optional order/receipt reference).
+- **Returns** — record items returned from any channel; every return adds stock back (optional reason).
+- **Stock Movements** — full movement history (inbound, transfer-in, transfer-out, sale, return) with type, location, and quantity details.
+- **Quick Filters** — every list page has a sidebar with chip-based filters (category, channel, type, status, level) plus search, a price-range filter on products, and consistent pagination.
 
 ## Tech Stack
 
