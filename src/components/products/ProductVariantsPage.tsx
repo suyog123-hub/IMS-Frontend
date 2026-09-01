@@ -50,6 +50,8 @@ function VariantCard({ variant, productName, categoryName, unitName, color }: Va
           {variant.name}
         </h3>
 
+        {variant.size && <p className="pcard-size">Size: {variant.size}</p>}
+
         <div className="pcard-meta">
           <span className="chip" style={{ '--chip-color': color } as CSSProperties}>
             <span className="chip-dot" style={{ backgroundColor: color }} />

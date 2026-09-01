@@ -154,6 +154,7 @@ export function ProductFormPage() {
       const variantInput: ProductVariantInput = {
         productId: product.id,
         name: draft.name.trim() || product.name,
+        size: draft.size.trim(),
         quantity: toNumber(draft.quantity) ?? 0,
         costPrice: toNumber(draft.costPrice) ?? product.costPrice,
         discountPercent: toNumber(draft.discountPercent) ?? product.discountPercent,

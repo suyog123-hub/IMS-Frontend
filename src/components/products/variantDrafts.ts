@@ -5,6 +5,7 @@ export interface VariantDraft {
   key: string
   id?: string
   name: string
+  size: string
   quantity: string
   costPrice: string
   discountPercent: string
@@ -15,6 +16,7 @@ export function newVariantDraft(): VariantDraft {
   return {
     key: createId(),
     name: '',
+    size: '',
     quantity: '',
     costPrice: '',
     discountPercent: '',
@@ -27,6 +29,7 @@ export function variantDraftFrom(variant: ProductVariant): VariantDraft {
     key: variant.id,
     id: variant.id,
     name: variant.name,
+    size: variant.size ?? '',
     quantity: String(variant.quantity),
     costPrice: String(variant.costPrice),
     discountPercent: String(variant.discountPercent),

@@ -27,6 +27,7 @@ export interface Product extends Entity {
 export interface ProductVariant extends Entity {
   productId: string
   name: string
+  size: string
   quantity: number
   costPrice: number
   discountPercent: number

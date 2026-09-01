@@ -1802,6 +1802,13 @@ textarea.input {
   min-height: calc(1.35em * 2);
 }
 
+.pcard-size {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0;
+}
+
 .pcard-meta {
   display: flex;
   align-items: center;
@@ -2959,6 +2966,12 @@ textarea.input {
   align-items: center;
   gap: 6px;
   font-size: 13px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.variant-row-size {
+  font-weight: 600;
   color: var(--text-muted);
   white-space: nowrap;
 }

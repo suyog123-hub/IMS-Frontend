@@ -37,6 +37,7 @@ export interface ProductFormErrors {
 
 export interface ProductVariantFormValues {
   name: string
+  size: string
   quantity: string
   costPrice: string
   discountPercent: string
@@ -44,6 +45,7 @@ export interface ProductVariantFormValues {
 
 export interface ProductVariantFormErrors {
   name?: string
+  size?: string
   quantity?: string
   costPrice?: string
   discountPercent?: string

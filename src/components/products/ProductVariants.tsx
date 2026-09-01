@@ -78,7 +78,6 @@ export function ProductVariants({ drafts, errors, productDraft, onChange }: Prod
       <div className="variants-list">
         {drafts.map((draft) => {
           const error = errors[draft.key] ?? {}
-          const resolvedName = draft.name.trim() || productDraft.name.trim()
           const resolvedCost =
             toNumber(draft.costPrice) ?? toNumber(productDraft.costPrice) ?? null
           const resolvedDiscount =
@@ -128,10 +127,21 @@ export function ProductVariants({ drafts, errors, productDraft, onChange }: Prod
                   type="text"
                   value={draft.name}
                   onChange={(event) => update(draft.key, { name: event.target.value })}
-                  placeholder={resolvedName ? `Defaults to "${resolvedName}"` : 'Variant name'}
+                  placeholder="e.g. Large, Medium, Small"
                   className="input"
                 />
                 {error.name && <span className="field-error">{error.name}</span>}
+              </div>
+              <div className="variant-field">
+                <label className="field-label">Size</label>
+                <input
+                  type="text"
+                  value={draft.size}
+                  onChange={(event) => update(draft.key, { size: event.target.value })}
+                  placeholder="e.g. S, M, L, XL"
+                  className="input"
+                />
+                {error.size && <span className="field-error">{error.size}</span>}
               </div>
               <div className="variant-field">
                 <label className="field-label">Quantity</label>
@@ -154,11 +164,7 @@ export function ProductVariants({ drafts, errors, productDraft, onChange }: Prod
                   step="any"
                   value={draft.costPrice}
                   onChange={(event) => update(draft.key, { costPrice: event.target.value })}
-                  placeholder={
-                    toNumber(productDraft.costPrice) !== null
-                      ? `Defaults to ${formatCurrency(toNumber(productDraft.costPrice) ?? 0)}`
-                      : '0'
-                  }
+                  placeholder="e.g. 500, 750, 1000"
                   className="input"
                 />
                 {error.costPrice && <span className="field-error">{error.costPrice}</span>}
@@ -172,11 +178,7 @@ export function ProductVariants({ drafts, errors, productDraft, onChange }: Prod
                   step="any"
                   value={draft.discountPercent}
                   onChange={(event) => update(draft.key, { discountPercent: event.target.value })}
-                  placeholder={
-                    toNumber(productDraft.discountPercent) !== null
-                      ? `Defaults to ${toNumber(productDraft.discountPercent) ?? 0}%`
-                      : '0'
-                  }
+                  placeholder="e.g. 10, 20, 30"
                   className="input"
                 />
                 {error.discountPercent && (

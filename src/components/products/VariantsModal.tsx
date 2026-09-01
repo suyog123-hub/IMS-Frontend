@@ -69,6 +69,7 @@ export function VariantsModal({
           <div className="variant-row variant-row-header">
             <span className="variant-thumb" />
             <span className="variant-row-name">Type</span>
+            <span className="variant-row-size">Size</span>
             <span className="variant-row-meta">Quantity</span>
             <span className="variant-row-price">Selling Price</span>
           </div>
@@ -82,6 +83,7 @@ export function VariantsModal({
                 )}
               </span>
               <span className="variant-row-name">{variant.name}</span>
+              <span className="variant-row-size">{variant.size || '—'}</span>
               <span className="variant-row-meta">
                 <span className="variant-qty-chip">{formatNumber(variant.quantity)}</span>
                 {unitName ?? ''}
