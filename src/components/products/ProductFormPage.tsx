@@ -19,7 +19,7 @@ import { Field } from '../common/Field'
 import { ProductVariants } from './ProductVariants'
 import { variantDraftFrom, type VariantDraft } from './variantDrafts'
 
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024
+const MAX_IMAGE_BYTES = 1024
 
 function toEmptyValues(): ProductFormValues {
   return {
@@ -87,7 +87,7 @@ export function ProductFormPage() {
       return
     }
     if (file.size > MAX_IMAGE_BYTES) {
-      setImageError('Image exceeds the 10 MB size limit. Please upload a smaller image.')
+      setImageError('Image exceeds the 1 KB size limit. Please upload a smaller image.')
       return
     }
     const reader = new FileReader()
