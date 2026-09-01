@@ -19,7 +19,7 @@ import { Field } from '../common/Field'
 import { ProductVariants } from './ProductVariants'
 import { variantDraftFrom, type VariantDraft } from './variantDrafts'
 
-const MAX_IMAGE_BYTES = 2 * 1024 * 1024
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 function toEmptyValues(): ProductFormValues {
   return {
@@ -87,7 +87,7 @@ export function ProductFormPage() {
       return
     }
     if (file.size > MAX_IMAGE_BYTES) {
-      setImageError('Image must be 2 MB or smaller.')
+      setImageError('Image exceeds the 10 MB size limit. Please upload a smaller image.')
       return
     }
     const reader = new FileReader()
@@ -298,7 +298,7 @@ export function ProductFormPage() {
               />
             </Field>
 
-            <Field label="Image" hint="JPG, PNG or WebP, up to 2 MB" className="field-span-2">
+            <Field label="Image" hint="JPG, PNG or WebP, up to 10 MB" className="field-span-2">
               <div className="image-field">
                 {values.image ? (
                   <div className="image-preview">
