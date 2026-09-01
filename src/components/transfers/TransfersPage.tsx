@@ -13,11 +13,6 @@ import { useCollection } from '../../hooks/useCollection'
 import { toNumber } from '../../utils/numbers'
 import { formatNumber } from '../../utils/format'
 import { nameColor } from '../../utils/color'
-import {
-  validateTransfer,
-  type TransferFormErrors,
-  type TransferFormValues,
-} from '../../utils/validation'
 import { Field } from '../common/Field'
 import { EmptyState } from '../common/EmptyState'
 import { Pagination } from '../common/Pagination'
@@ -317,7 +312,7 @@ export function TransfersPage() {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                justify: 'space-between',
+                justifyContent: 'space-between',
                 marginBottom: '12px',
                 flexWrap: 'wrap',
                 gap: '8px',
@@ -381,7 +376,7 @@ export function TransfersPage() {
                           border: '1px solid var(--border)',
                           display: 'flex',
                           alignItems: 'center',
-                          justify: 'center',
+                          justifyContent: 'center',
                           fontWeight: 700,
                           color: 'var(--primary)',
                         }}

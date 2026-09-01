@@ -333,7 +333,7 @@ export function ReturnsPage() {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                justify: 'space-between',
+                justifyContent: 'space-between',
                 marginBottom: '12px',
                 flexWrap: 'wrap',
                 gap: '8px',
@@ -397,7 +397,7 @@ export function ReturnsPage() {
                           border: '1px solid var(--border)',
                           display: 'flex',
                           alignItems: 'center',
-                          justify: 'center',
+                          justifyContent: 'center',
                           fontWeight: 700,
                           color: 'var(--primary)',
                         }}

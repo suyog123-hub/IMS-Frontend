@@ -12,7 +12,6 @@ import {
   type ProductFormValues,
   type ProductVariantFormErrors,
 } from '../../utils/validation'
-import { formatCurrency } from '../../utils/format'
 import { toastError, toastSuccess } from '../../utils/toast'
 import { EmptyState } from '../common/EmptyState'
 import { Field } from '../common/Field'
@@ -61,7 +60,6 @@ export function ProductFormPage() {
     }
   })
   const [errors, setErrors] = useState<Partial<Record<keyof ProductFormValues, string>>>({})
-  const [imageError, setImageError] = useState<string | null>(null)
   const [oversizedFile, setOversizedFile] = useState<File | null>(null)
   const [oversizedSizeMB, setOversizedSizeMB] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -74,8 +72,6 @@ export function ProductFormPage() {
 
   const parsedCost = toNumber(values.costPrice)
   const parsedDiscount = toNumber(values.discountPercent)
-  const canShowPrice = parsedCost !== null && parsedDiscount !== null
-  const liveSellingPrice = canShowPrice ? calculateSellingPrice(parsedCost, parsedDiscount) : null
 
   const setValue = (key: keyof ProductFormValues, value: string) => {
     setValues((prev) => ({ ...prev, [key]: value }))
@@ -101,7 +97,6 @@ export function ProductFormPage() {
       const blobId = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
       await saveImageBlob(blobId, file)
       setValues((prev) => ({ ...prev, image: blobId }))
-      setImageError(null)
     } catch {
       toastError('Failed to save image. Please try again.')
     }
@@ -111,7 +106,6 @@ export function ProductFormPage() {
     const blobId = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
     await saveImageBlob(blobId, compressedBlob)
     setValues((prev) => ({ ...prev, image: blobId }))
-    setImageError(null)
   }
 
 

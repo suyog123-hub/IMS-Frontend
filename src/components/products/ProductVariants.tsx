@@ -25,7 +25,6 @@ interface ProductVariantsProps {
 }
 
 export function ProductVariants({ drafts, errors, productDraft, onChange }: ProductVariantsProps) {
-  const [imageErrors, setImageErrors] = useState<Record<string, string>>({})
   const [oversizedVariantFile, setOversizedVariantFile] = useState<{ key: string; file: File } | null>(null)
   const [oversizedSizeMB, setOversizedSizeMB] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -37,10 +36,6 @@ export function ProductVariants({ drafts, errors, productDraft, onChange }: Prod
 
   const remove = (key: string) => {
     onChange(drafts.filter((draft) => draft.key !== key))
-    setImageErrors((prev) => {
-      const { [key]: _removed, ...rest } = prev
-      return rest
-    })
   }
 
   const addVariant = () => {
@@ -71,10 +66,6 @@ export function ProductVariants({ drafts, errors, productDraft, onChange }: Prod
       const blobId = `img_var_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
       await saveImageBlob(blobId, file)
       update(key, { image: blobId })
-      setImageErrors((prev) => {
-        const { [key]: _cleared, ...rest } = prev
-        return rest
-      })
     } catch {
       toastError('Failed to save image. Please try again.')
     }

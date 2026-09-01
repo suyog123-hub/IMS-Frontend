@@ -253,13 +253,12 @@ export function EditVariantModal({ open, variant, onClose, onSuccess }: EditVari
         <OversizedImageModal
           open={Boolean(oversizedFile)}
           file={oversizedFile}
-          sizeMB={oversizedSizeMB}
-          maxSizeMB="2"
+          fileSizeMB={oversizedSizeMB}
           onClose={() => {
             setOversizedFile(null)
             setOversizedSizeMB(null)
           }}
-          onCompressedUpload={handleCompressedUpload}
+          onCompressed={handleCompressedUpload}
         />
       )}
     </>

@@ -328,7 +328,7 @@ export function SalesPage() {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                justify: 'space-between',
+                justifyContent: 'space-between',
                 marginBottom: '12px',
                 flexWrap: 'wrap',
                 gap: '8px',
@@ -392,7 +392,7 @@ export function SalesPage() {
                           border: '1px solid var(--border)',
                           display: 'flex',
                           alignItems: 'center',
-                          justify: 'center',
+                          justifyContent: 'center',
                           fontWeight: 700,
                           color: 'var(--primary)',
                         }}

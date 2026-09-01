@@ -4,7 +4,6 @@ import { Field } from './Field'
 import { AppImage } from './AppImage'
 import {
   inventoryStorage,
-  movementStorage,
   productVariantStorage,
   recordInbound,
   stockLocationStorage,
@@ -122,7 +121,7 @@ export function AddStockModal({ open, onClose, item, onSuccess }: AddStockModalP
               border: '1px solid var(--border)',
               display: 'flex',
               alignItems: 'center',
-              justify: 'center',
+              justifyContent: 'center',
               fontWeight: 700,
               color: 'var(--primary)',
             }}
