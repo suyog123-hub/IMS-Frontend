@@ -11,6 +11,7 @@ interface StockLocationListProps {
   locations: StockLocation[]
   parentNames: ReadonlyMap<string, string>
   productCounts: ReadonlyMap<string, number>
+  variantCounts?: ReadonlyMap<string, number>
   isMain: (location: StockLocation) => boolean
   onEdit: (location: StockLocation) => void
   onDelete: (location: StockLocation) => void
@@ -22,6 +23,7 @@ export function StockLocationList({
   locations,
   parentNames,
   productCounts,
+  variantCounts,
   isMain,
   onEdit,
   onDelete,
@@ -162,14 +164,15 @@ export function StockLocationList({
           const color = nameColor(location.name || 'warehouse')
           const initial = (location.name || 'W').charAt(0).toUpperCase()
           const productCount = productCounts.get(location.id) ?? 0
+          const variantCount = variantCounts?.get(location.id) ?? 0
           const main = isMain(location)
 
           return (
             <div className="card master-card" style={{ '--c': color } as CSSProperties} key={location.id}>
               <div className="master-cover">
                 <span className="master-avatar">{initial}</span>
-                <span className={`master-chip${productCount > 0 ? '' : ' master-chip-unused'}`}>
-                  {main ? 'Main' : productCount > 0 ? 'In use' : 'Empty'}
+                <span className={`master-chip${productCount > 0 || variantCount > 0 ? '' : ' master-chip-unused'}`}>
+                  {main ? 'Main' : productCount > 0 || variantCount > 0 ? 'In use' : 'Empty'}
                 </span>
                 <div className="master-actions">
                   <button
@@ -235,23 +238,44 @@ export function StockLocationList({
                     <span className="location-parent location-parent-none">top level</span>
                   )}
                 </div>
-                <div className="master-stat">
-                  <span className="master-stat-value">{formatNumber(productCount)}</span>
-                  <svg
-                    className="master-stat-icon"
-                    viewBox="0 0 24 24"
-                    width="16"
-                    height="16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="m12 2-8 4.5 8 4.5 8-4.5L12 2Zm-8 9 8 4.5 8-4.5M4 15.5 12 20l8-4.5" />
-                  </svg>
-                  <span className="master-stat-label">Products stocked here</span>
+                <div className="master-stat" style={{ justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span className="master-stat-value">{formatNumber(productCount)}</span>
+                    <svg
+                      className="master-stat-icon"
+                      viewBox="0 0 24 24"
+                      width="15"
+                      height="15"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="m12 2-8 4.5 8 4.5 8-4.5L12 2Zm-8 9 8 4.5 8-4.5M4 15.5 12 20l8-4.5" />
+                    </svg>
+                    <span className="master-stat-label">Products</span>
+                  </div>
+                  <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--border)' }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span className="master-stat-value">{formatNumber(variantCount)}</span>
+                    <svg
+                      className="master-stat-icon"
+                      viewBox="0 0 24 24"
+                      width="15"
+                      height="15"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                    <span className="master-stat-label">Variants</span>
+                  </div>
                 </div>
               </div>
             </div>

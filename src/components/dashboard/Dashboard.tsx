@@ -1,10 +1,11 @@
-import { useMemo, type CSSProperties, type ReactElement, type ReactNode } from 'react'
+import { useMemo, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
   categoryStorage,
   inventoryStorage,
   movementStorage,
   productStorage,
+  productVariantStorage,
   stockLocationStorage,
   unitStorage,
 } from '../../storage'
@@ -16,10 +17,11 @@ import {
   CHANNEL_LABELS,
   locationChannel,
 } from '../../utils/channels'
-import type { LocationChannel, MovementType } from '../../types/models'
+import type { Inventory, LocationChannel, MovementType, ProductVariant, StockLocation, StockMovement } from '../../types/models'
 import { MovementRow } from '../common/MovementRow'
+import { AddStockModal, type RestockItem } from '../common/AddStockModal'
 
-const LOW_STOCK_THRESHOLD = 10
+const LOW_STOCK_THRESHOLD = 5
 const LOW_STOCK_SHOWN = 6
 const RECENT_MOVEMENTS_SHOWN = 6
 
@@ -80,6 +82,85 @@ const MOVEMENT_MIX_COLORS: Record<MovementType, string> = {
   'return-in': '#8b5cf6',
 }
 
+function computeVariantLocationBreakdown(
+  productId: string,
+  variantId: string | undefined,
+  variantStock: number,
+  locations: StockLocation[],
+  inventoryItems: Inventory[],
+  movements: StockMovement[]
+): Array<{ locationId: string; locationName: string; quantity: number }> {
+  if (!variantId) {
+    return locations
+      .map((loc) => ({
+        locationId: loc.id,
+        locationName: loc.name,
+        quantity:
+          inventoryItems.find((r) => r.productId === productId && r.locationId === loc.id)
+            ?.quantity ?? 0,
+      }))
+      .filter((b) => b.quantity > 0)
+  }
+
+  const varMovements = movements.filter((m) => m.variantId === variantId)
+  if (varMovements.length > 0) {
+    const locMap = new Map<string, number>()
+    for (const m of varMovements) {
+      if (m.type === 'inbound' || m.type === 'transfer-in' || m.type === 'return-in') {
+        if (m.toLocationId) locMap.set(m.toLocationId, (locMap.get(m.toLocationId) ?? 0) + m.quantity)
+      }
+      if (m.type === 'transfer-out' || m.type === 'sale') {
+        if (m.fromLocationId) locMap.set(m.fromLocationId, (locMap.get(m.fromLocationId) ?? 0) - m.quantity)
+      }
+    }
+    const list = locations
+      .map((loc) => ({
+        locationId: loc.id,
+        locationName: loc.name,
+        quantity: Math.max(0, locMap.get(loc.id) ?? 0),
+      }))
+      .filter((b) => b.quantity > 0)
+
+    if (list.length > 0) return list
+  }
+
+  const productLocs = locations
+    .map((loc) => ({
+      locationId: loc.id,
+      locationName: loc.name,
+      quantity:
+        inventoryItems.find((r) => r.productId === productId && r.locationId === loc.id)
+          ?.quantity ?? 0,
+    }))
+    .filter((b) => b.quantity > 0)
+
+  const totalProductStock = productLocs.reduce((sum, b) => sum + b.quantity, 0)
+  if (totalProductStock === 0) return []
+
+  let remaining = variantStock
+  const result: Array<{ locationId: string; locationName: string; quantity: number }> = []
+
+  for (let i = 0; i < productLocs.length; i++) {
+    const loc = productLocs[i]
+    if (i === productLocs.length - 1) {
+      if (remaining > 0) {
+        result.push({ locationId: loc.locationId, locationName: loc.locationName, quantity: remaining })
+      }
+    } else {
+      const allocated = Math.min(
+        remaining,
+        Math.round(variantStock * (loc.quantity / totalProductStock))
+      )
+      if (allocated > 0) {
+        result.push({ locationId: loc.locationId, locationName: loc.locationName, quantity: allocated })
+        remaining -= allocated
+      }
+    }
+  }
+
+  return result
+}
+
 function withinDays(iso: string, days: number): boolean {
   const then = new Date(iso).getTime()
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
@@ -88,6 +169,7 @@ function withinDays(iso: string, days: number): boolean {
 
 export function Dashboard() {
   const products = useCollection(productStorage)
+  const variants = useCollection(productVariantStorage)
   const categories = useCollection(categoryStorage)
   const units = useCollection(unitStorage)
   const inventory = useCollection(inventoryStorage)
@@ -100,6 +182,16 @@ export function Dashboard() {
     return names
   }, [categories.items])
 
+  const variantsByProduct = useMemo(() => {
+    const map = new Map<string, ProductVariant[]>()
+    for (const variant of variants.items) {
+      const list = map.get(variant.productId) ?? []
+      list.push(variant)
+      map.set(variant.productId, list)
+    }
+    return map
+  }, [variants.items])
+
   const stockByProduct = useMemo(() => {
     const map = new Map<string, number>()
     for (const record of inventory.items) {
@@ -108,23 +200,109 @@ export function Dashboard() {
     return map
   }, [inventory.items])
 
-  const lowStock = useMemo(() => {
-    return products.items
-      .map((product) => ({
-        product: { id: product.id, name: product.name, image: product.image },
-        categoryName: categoryNames.get(product.categoryId) ?? 'Uncategorized',
-        stock: stockByProduct.get(product.id) ?? 0,
-      }))
-      .filter((row) => row.stock < LOW_STOCK_THRESHOLD)
-      .sort((a, b) => a.stock - b.stock)
-  }, [products.items, categoryNames, stockByProduct])
+  const totalQuantity = useMemo(() => {
+    let total = 0
+    for (const product of products.items) {
+      const pVariants = variantsByProduct.get(product.id) ?? []
+      if (pVariants.length > 0) {
+        total += pVariants.reduce((sum, v) => sum + v.quantity, 0)
+      } else {
+        total += stockByProduct.get(product.id) ?? 0
+      }
+    }
+    return total
+  }, [products.items, variantsByProduct, stockByProduct])
 
+  const inventoryValue = useMemo(() => {
+    let total = 0
+    for (const product of products.items) {
+      const pVariants = variantsByProduct.get(product.id) ?? []
+      if (pVariants.length > 0) {
+        total += pVariants.reduce((sum, v) => sum + v.costPrice * v.quantity, 0)
+      } else {
+        total += product.costPrice * (stockByProduct.get(product.id) ?? 0)
+      }
+    }
+    return total
+  }, [products.items, variantsByProduct, stockByProduct])
+
+  const lowStock = useMemo(() => {
+    const list: Array<{
+      id: string
+      product: { id: string; name: string; image?: string }
+      categoryName: string
+      stock: number
+      productId: string
+      variantId?: string
+      locationBreakdown: Array<{ locationId: string; locationName: string; quantity: number }>
+    }> = []
+
+    for (const product of products.items) {
+      const pVariants = variantsByProduct.get(product.id) ?? []
+      if (pVariants.length > 0) {
+        for (const variant of pVariants) {
+          if (variant.quantity < LOW_STOCK_THRESHOLD) {
+            const details = [
+              variant.size ? `Size: ${variant.size}` : '',
+              variant.color ? `Color: ${variant.color}` : '',
+            ]
+              .filter(Boolean)
+              .join(' | ')
+
+            const breakdown = computeVariantLocationBreakdown(
+              product.id,
+              variant.id,
+              variant.quantity,
+              locations.items,
+              inventory.items,
+              movements.items
+            )
+
+            list.push({
+              id: variant.id,
+              product: {
+                id: product.id,
+                name: `${variant.name} (${product.name}${details ? ` — ${details}` : ''})`,
+                image: variant.image || product.image,
+              },
+              categoryName: categoryNames.get(product.categoryId) ?? 'Uncategorized',
+              stock: variant.quantity,
+              productId: product.id,
+              variantId: variant.id,
+              locationBreakdown: breakdown,
+            })
+          }
+        }
+      } else {
+        const stock = stockByProduct.get(product.id) ?? 0
+        if (stock < LOW_STOCK_THRESHOLD) {
+          const breakdown = computeVariantLocationBreakdown(
+            product.id,
+            undefined,
+            stock,
+            locations.items,
+            inventory.items,
+            movements.items
+          )
+
+          list.push({
+            id: product.id,
+            product: { id: product.id, name: product.name, image: product.image },
+            categoryName: categoryNames.get(product.categoryId) ?? 'Uncategorized',
+            stock,
+            productId: product.id,
+            locationBreakdown: breakdown,
+          })
+        }
+      }
+    }
+
+    return list.sort((a, b) => a.stock - b.stock)
+  }, [products.items, variantsByProduct, stockByProduct, categoryNames, locations.items, inventory.items, movements.items])
+
+  const [showLowStockDetails, setShowLowStockDetails] = useState(true)
+  const [restockItem, setRestockItem] = useState<RestockItem | null>(null)
   const lowStockShown = lowStock.slice(0, LOW_STOCK_SHOWN)
-  const totalQuantity = [...stockByProduct.values()].reduce((sum, qty) => sum + qty, 0)
-  const inventoryValue = products.items.reduce(
-    (sum, product) => sum + product.costPrice * (stockByProduct.get(product.id) ?? 0),
-    0
-  )
 
   const addedThisWeek = products.items.filter((product) => withinDays(product.createdAt, 7)).length
   const categoriesInUse = [...categoryNames.keys()].filter((id) =>
@@ -657,11 +835,25 @@ export function Dashboard() {
       </div>
 
       <div className="card dashboard-section">
-        <div className="dashboard-section-header">
+        <div className="dashboard-section-header" style={{ alignItems: 'center' }}>
           <h2 className="dashboard-section-title">Low Stock Alert</h2>
-          <Link to="/inventory" className="dashboard-section-link">
-            View inventory
-          </Link>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setShowLowStockDetails((prev) => !prev)}
+              style={{ fontSize: '12px', padding: '4px 10px' }}
+            >
+              {showLowStockDetails ? 'Hide Details' : 'Show Details'}
+            </button>
+            <Link
+              to="/transfers"
+              className="btn btn-primary btn-sm"
+              style={{ fontSize: '12px', padding: '4px 10px' }}
+            >
+              Transfer Stock
+            </Link>
+          </div>
         </div>
 
         {lowStockShown.length === 0 ? (
@@ -672,7 +864,7 @@ export function Dashboard() {
         ) : (
           <ul className="low-stock-list">
             {lowStockShown.map((row) => (
-              <li key={row.product.id} className="low-stock-item">
+              <li key={row.id} className="low-stock-item" style={{ flexWrap: 'wrap', gap: '10px' }}>
                 <span className="low-stock-avatar">
                   {row.product.image ? (
                     <img
@@ -684,15 +876,64 @@ export function Dashboard() {
                     row.product.name.charAt(0).toUpperCase()
                   )}
                 </span>
-                <span className="low-stock-body">
+                <span className="low-stock-body" style={{ flex: 1, minWidth: '200px' }}>
                   <span className="low-stock-name">{row.product.name}</span>
                   <span className="low-stock-meta">{row.categoryName}</span>
+
+                  {showLowStockDetails && (
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' }}>
+                      {row.locationBreakdown.length > 0 ? (
+                        row.locationBreakdown.map((loc) => (
+                          <span
+                            key={loc.locationId}
+                            style={{
+                              fontSize: '11px',
+                              padding: '2px 8px',
+                              borderRadius: '12px',
+                              background: 'var(--surface-muted)',
+                              border: '1px solid var(--border)',
+                              color: 'var(--text-muted)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            📍 {loc.locationName}: <strong>{formatNumber(loc.quantity)}</strong>
+                          </span>
+                        ))
+                      ) : (
+                        <span style={{ fontSize: '11px', color: '#ef4444', fontWeight: 600 }}>
+                          Out of stock across all locations
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </span>
-                <span
-                  className={`low-stock-qty${row.stock === 0 ? ' low-stock-qty-danger' : ''}`}
-                >
-                  {formatNumber(row.stock)} units
-                </span>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span
+                    className={`low-stock-qty${row.stock === 0 ? ' low-stock-qty-danger' : ''}`}
+                  >
+                    {formatNumber(row.stock)} units
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary"
+                    onClick={() =>
+                      setRestockItem({
+                        id: row.id,
+                        name: row.product.name,
+                        productId: row.productId,
+                        variantId: row.variantId,
+                        currentStock: row.stock,
+                        image: row.product.image,
+                      })
+                    }
+                    style={{ fontSize: '11px', padding: '3px 10px' }}
+                  >
+                    + Add Stock
+                  </button>
+                </div>
               </li>
             ))}
             {lowStock.length > LOW_STOCK_SHOWN && (
@@ -743,6 +984,18 @@ export function Dashboard() {
           from the cost price and the discount percentage.
         </p>
       </div>
+
+      <AddStockModal
+        open={Boolean(restockItem)}
+        item={restockItem}
+        onClose={() => setRestockItem(null)}
+        onSuccess={() => {
+          products.refresh()
+          variants.refresh()
+          inventory.refresh()
+          movements.refresh()
+        }}
+      />
     </section>
   )
 }

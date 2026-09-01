@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 import type { Product, ProductVariant } from '../../types/models'
 import { formatCurrency, formatNumber } from '../../utils/format'
 import { Modal } from '../common/Modal'
+import { AppImage } from '../common/AppImage'
 
 interface VariantsModalProps {
   product: Product
@@ -29,7 +30,7 @@ export function VariantsModal({
       <div className="variants-modal">
         <div className="variants-modal-hero">
           {product.image ? (
-            <img src={product.image} alt={product.name} className="variant-modal-hero-img" />
+            <AppImage src={product.image} alt={product.name} className="variant-modal-hero-img" />
           ) : (
             <div
               className="variant-modal-hero-placeholder"
@@ -69,7 +70,7 @@ export function VariantsModal({
           <div className="variant-row variant-row-header">
             <span className="variant-thumb" />
             <span className="variant-row-name">Type</span>
-            <span className="variant-row-size">Size</span>
+            <span className="variant-row-size">Size / Color</span>
             <span className="variant-row-meta">Quantity</span>
             <span className="variant-row-price">Selling Price</span>
           </div>
@@ -77,13 +78,15 @@ export function VariantsModal({
             <div className="variant-row" key={variant.id}>
               <span className="variant-thumb">
                 {variant.image ? (
-                  <img src={variant.image} alt={variant.name} />
+                  <AppImage src={variant.image} alt={variant.name} />
                 ) : (
                   <span>{variant.name.charAt(0).toUpperCase()}</span>
                 )}
               </span>
-              <span className="variant-row-name">{variant.name}</span>
-              <span className="variant-row-size">{variant.size || '—'}</span>
+              <span className="variant-row-name" title={variant.name}>{variant.name}</span>
+              <span className="variant-row-size">
+                {[variant.size, variant.color].filter(Boolean).join(' / ') || '—'}
+              </span>
               <span className="variant-row-meta">
                 <span className="variant-qty-chip">{formatNumber(variant.quantity)}</span>
                 {unitName ?? ''}

@@ -28,6 +28,7 @@ export interface ProductVariant extends Entity {
   productId: string
   name: string
   size: string
+  color?: string
   quantity: number
   costPrice: number
   discountPercent: number
@@ -54,6 +55,7 @@ export type MovementType = 'inbound' | 'transfer-in' | 'transfer-out' | 'sale' |
 
 export interface StockMovement extends Entity {
   productId: string
+  variantId?: string
   fromLocationId: string | null
   toLocationId: string | null
   quantity: number
@@ -69,7 +71,9 @@ export type ProductInput = Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'sel
 export type ProductVariantInput = Omit<
   ProductVariant,
   'id' | 'createdAt' | 'updatedAt' | 'sellingPrice'
->
+> & {
+  sellingPrice?: number
+}
 export type StockLocationInput = NewEntity & {
   name: string
   code: string
@@ -83,6 +87,7 @@ export type InventoryInput = NewEntity & {
 }
 export type StockMovementInput = NewEntity & {
   productId: string
+  variantId?: string
   fromLocationId: string | null
   toLocationId: string | null
   quantity: number

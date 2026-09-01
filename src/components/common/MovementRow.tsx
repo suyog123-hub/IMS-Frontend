@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 import type { Category, Product, StockLocation, StockMovement } from '../../types/models'
+import { productVariantStorage } from '../../storage'
 import { formatDate, formatNumber } from '../../utils/format'
 import { nameColor } from '../../utils/color'
 import { movementLabel } from '../../utils/movements'
@@ -13,7 +14,11 @@ interface MovementRowProps {
 
 export function MovementRow({ movement, products, categories, locations }: MovementRowProps) {
   const product = products.find((item) => item.id === movement.productId)
-  const productName = product?.name ?? 'Unknown Product'
+  const variant = movement.variantId ? productVariantStorage.getById(movement.variantId) : null
+  const baseName = product?.name ?? 'Unknown Product'
+  const productName = variant
+    ? `${variant.name} (${baseName}${variant.size || variant.color ? ` — ${[variant.size ? `Size: ${variant.size}` : '', variant.color ? `Color: ${variant.color}` : ''].filter(Boolean).join(', ')}` : ''})`
+    : baseName
   const categoryName =
     categories.find((item) => item.id === product?.categoryId)?.name ?? 'Uncategorized'
   const color = nameColor(categoryName)
@@ -28,7 +33,7 @@ export function MovementRow({ movement, products, categories, locations }: Movem
   return (
     <li className="card movement-card-item" style={{ '--c': color } as CSSProperties}>
       <div className="movement-card-top">
-        <span className="movement-thumb">{productName.charAt(0).toUpperCase()}</span>
+        <span className="movement-thumb">{(variant?.name ?? baseName).charAt(0).toUpperCase()}</span>
         <span className={`movement-type-badge movement-type-${movement.type}`}>{label}</span>
       </div>
 

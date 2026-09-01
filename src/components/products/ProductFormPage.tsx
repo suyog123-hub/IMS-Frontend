@@ -1,7 +1,7 @@
 import { useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import type { Product, ProductInput, ProductVariantInput } from '../../types/models'
-import { productStorage, categoryStorage, unitStorage, productVariantStorage, ensureMainStock, recordInbound } from '../../storage'
+import { productStorage, categoryStorage, unitStorage, productVariantStorage, ensureMainStock, recordInbound, movementStorage, saveImageBlob } from '../../storage'
 import { STOCK_LOCATION_MAIN_ID } from '../../constants'
 import { useCollection } from '../../hooks/useCollection'
 import { toNumber } from '../../utils/numbers'
@@ -16,10 +16,12 @@ import { formatCurrency } from '../../utils/format'
 import { toastError, toastSuccess } from '../../utils/toast'
 import { EmptyState } from '../common/EmptyState'
 import { Field } from '../common/Field'
+import { AppImage } from '../common/AppImage'
+import { OversizedImageModal } from '../common/OversizedImageModal'
 import { ProductVariants } from './ProductVariants'
 import { variantDraftFrom, type VariantDraft } from './variantDrafts'
 
-const MAX_IMAGE_BYTES = 1024 * 1024
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024
 
 function toEmptyValues(): ProductFormValues {
   return {
@@ -60,6 +62,8 @@ export function ProductFormPage() {
   })
   const [errors, setErrors] = useState<Partial<Record<keyof ProductFormValues, string>>>({})
   const [imageError, setImageError] = useState<string | null>(null)
+  const [oversizedFile, setOversizedFile] = useState<File | null>(null)
+  const [oversizedSizeMB, setOversizedSizeMB] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [variantDrafts, setVariantDrafts] = useState<VariantDraft[]>(() =>
     product ? productVariantStorage.getByProduct(product.id).map(variantDraftFrom) : [],
@@ -78,28 +82,38 @@ export function ProductFormPage() {
     setErrors((prev) => (prev[key] ? { ...prev, [key]: undefined } : prev))
   }
 
-  const handleImageChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
     if (!file.type.startsWith('image/')) {
-      setImageError('Please choose a valid image file.')
+      toastError('Please choose a valid image file.')
       return
     }
     if (file.size > MAX_IMAGE_BYTES) {
-      setImageError('Image exceeds the 1 MB size limit. Please upload a smaller image.')
+      const sizeMB = (file.size / (1024 * 1024)).toFixed(2)
+      setOversizedFile(file)
+      setOversizedSizeMB(sizeMB)
       return
     }
-    const reader = new FileReader()
-    reader.onload = () => {
-      setValues((prev) => ({
-        ...prev,
-        image: typeof reader.result === 'string' ? reader.result : '',
-      }))
+
+    try {
+      const blobId = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
+      await saveImageBlob(blobId, file)
+      setValues((prev) => ({ ...prev, image: blobId }))
       setImageError(null)
+    } catch {
+      toastError('Failed to save image. Please try again.')
     }
-    reader.readAsDataURL(file)
   }
+
+  const handleCompressedUpload = async (compressedBlob: Blob) => {
+    const blobId = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
+    await saveImageBlob(blobId, compressedBlob)
+    setValues((prev) => ({ ...prev, image: blobId }))
+    setImageError(null)
+  }
+
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault()
@@ -135,11 +149,26 @@ export function ProductFormPage() {
       return
     }
 
-    ensureMainStock(saved.id, saved.quantity)
-    if (!product) {
-      recordInbound(saved.id, STOCK_LOCATION_MAIN_ID, saved.quantity)
-    }
     syncVariants(saved, variantDrafts)
+
+    const totalVariantStock = variantDrafts.reduce(
+      (sum, draft) => sum + (toNumber(draft.quantity) ?? 0),
+      0
+    )
+    const finalStock = totalVariantStock > 0 ? totalVariantStock : (toNumber(values.quantity) ?? 0)
+
+    ensureMainStock(saved.id, finalStock)
+
+    const existingInbound = movementStorage
+      .getAll()
+      .find((m) => m.productId === saved.id && m.type === 'inbound')
+
+    if (existingInbound) {
+      movementStorage.update(existingInbound.id, { quantity: finalStock })
+    } else if (finalStock > 0) {
+      recordInbound(saved.id, STOCK_LOCATION_MAIN_ID, finalStock)
+    }
+
     toastSuccess(product ? 'Product updated successfully.' : 'Product created successfully.')
     navigate('/products')
   }
@@ -151,13 +180,20 @@ export function ProductFormPage() {
       if (!keptIds.includes(variant.id)) productVariantStorage.remove(variant.id)
     })
     drafts.forEach((draft) => {
+      const costPrice = toNumber(draft.costPrice) ?? product?.costPrice ?? 0
+      const discountPercent = toNumber(draft.discountPercent) ?? product?.discountPercent ?? 0
+      const manualPrice = toNumber(draft.sellingPrice)
+      const sellingPrice = manualPrice ?? calculateSellingPrice(costPrice, discountPercent)
+
       const variantInput: ProductVariantInput = {
         productId: product.id,
         name: draft.name.trim() || product.name,
         size: draft.size.trim(),
+        color: draft.color.trim(),
         quantity: toNumber(draft.quantity) ?? 0,
-        costPrice: toNumber(draft.costPrice) ?? product.costPrice,
-        discountPercent: toNumber(draft.discountPercent) ?? product.discountPercent,
+        costPrice,
+        discountPercent,
+        sellingPrice,
         image: draft.image,
       }
       if (draft.id) {
@@ -175,10 +211,7 @@ export function ProductFormPage() {
     <section>
       <div className="page-header">
         <h1>{editing ? 'Edit Product' : 'Add Product'}</h1>
-        <p>
-          The selling price is calculated automatically from the cost price and the discount
-          percentage.
-        </p>
+        <p>Add a new product or update existing details in your catalog.</p>
       </div>
 
       <div className="card">
@@ -234,7 +267,7 @@ export function ProductFormPage() {
               </select>
             </Field>
 
-            <Field label="Unit" error={errors.unitId}>
+            <Field label="Unit" error={errors.unitId} className="field-span-2">
               <select
                 value={values.unitId}
                 onChange={(event) => setValue('unitId', event.target.value)}
@@ -249,61 +282,11 @@ export function ProductFormPage() {
               </select>
             </Field>
 
-            <Field label="Quantity" error={errors.quantity}>
-              <input
-                type="number"
-                min="0"
-                step="any"
-                value={values.quantity}
-                onChange={(event) => setValue('quantity', event.target.value)}
-                placeholder="0"
-                className="input"
-              />
-            </Field>
-
-            <Field label="Cost Price" error={errors.costPrice}>
-              <input
-                type="number"
-                min="0"
-                step="any"
-                value={values.costPrice}
-                onChange={(event) => setValue('costPrice', event.target.value)}
-                placeholder="0"
-                className="input"
-              />
-            </Field>
-
-            <Field label="Discount (%)" error={errors.discountPercent} hint="Percentage off the cost price.">
-              <input
-                type="number"
-                min="0"
-                max="100"
-                step="any"
-                value={values.discountPercent}
-                onChange={(event) => setValue('discountPercent', event.target.value)}
-                placeholder="0"
-                className="input"
-              />
-            </Field>
-
-            <Field
-              label="Selling Price"
-              hint="Calculated automatically"
-            >
-              <input
-                type="text"
-                value={liveSellingPrice === null ? '—' : formatCurrency(liveSellingPrice)}
-                readOnly
-                aria-readonly="true"
-                className="input input-readonly"
-              />
-            </Field>
-
-            <Field label="Image" hint="JPG, PNG or WebP, up to 10 MB" className="field-span-2">
+            <Field label="Image" hint="JPG, PNG, WebP or GIF, up to 1 MB" className="field-span-2">
               <div className="image-field">
                 {values.image ? (
                   <div className="image-preview">
-                    <img src={values.image} alt="Product preview" />
+                    <AppImage src={values.image} alt="Product preview" />
                     <div className="image-preview-actions">
                       <button
                         type="button"
@@ -338,7 +321,6 @@ export function ProductFormPage() {
                   className="file-input"
                   onChange={handleImageChange}
                 />
-                {imageError && <span className="field-error">{imageError}</span>}
               </div>
             </Field>
 
@@ -376,6 +358,17 @@ export function ProductFormPage() {
           </form>
         )}
       </div>
+
+      <OversizedImageModal
+        open={Boolean(oversizedFile)}
+        file={oversizedFile}
+        fileSizeMB={oversizedSizeMB}
+        onClose={() => {
+          setOversizedFile(null)
+          setOversizedSizeMB(null)
+        }}
+        onCompressed={handleCompressedUpload}
+      />
     </section>
   )
 }

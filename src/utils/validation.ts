@@ -38,17 +38,21 @@ export interface ProductFormErrors {
 export interface ProductVariantFormValues {
   name: string
   size: string
+  color: string
   quantity: string
   costPrice: string
   discountPercent: string
+  sellingPrice: string
 }
 
 export interface ProductVariantFormErrors {
   name?: string
   size?: string
+  color?: string
   quantity?: string
   costPrice?: string
   discountPercent?: string
+  sellingPrice?: string
 }
 
 export function validateVariant(values: ProductVariantFormValues): ProductVariantFormErrors {
@@ -95,17 +99,23 @@ export function validateProduct(
     errors.unitId = 'The selected unit no longer exists.'
   }
 
-  const quantity = toNumber(values.quantity)
-  if (quantity === null || quantity < 0) errors.quantity = 'Quantity must be a non-negative number.'
+  if (values.quantity) {
+    const quantity = toNumber(values.quantity)
+    if (quantity === null || quantity < 0) errors.quantity = 'Quantity must be a non-negative number.'
+  }
 
-  const costPrice = toNumber(values.costPrice)
-  if (costPrice === null || costPrice < 0) errors.costPrice = 'Cost price must be a non-negative number.'
+  if (values.costPrice) {
+    const costPrice = toNumber(values.costPrice)
+    if (costPrice === null || costPrice < 0) errors.costPrice = 'Cost price must be a non-negative number.'
+  }
 
-  const discountPercent = toNumber(values.discountPercent)
-  if (discountPercent === null || discountPercent < 0) {
-    errors.discountPercent = 'Discount must be a non-negative number.'
-  } else if (discountPercent > 100) {
-    errors.discountPercent = 'Discount cannot exceed 100%.'
+  if (values.discountPercent) {
+    const discountPercent = toNumber(values.discountPercent)
+    if (discountPercent === null || discountPercent < 0) {
+      errors.discountPercent = 'Discount must be a non-negative number.'
+    } else if (discountPercent > 100) {
+      errors.discountPercent = 'Discount cannot exceed 100%.'
+    }
   }
 
   return errors

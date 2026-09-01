@@ -1,7 +1,9 @@
 import { useState, type CSSProperties } from 'react'
 import type { Inventory, Product } from '../../types/models'
+import { productVariantStorage } from '../../storage'
 import { formatNumber } from '../../utils/format'
 import { nameColor } from '../../utils/color'
+import { AppImage } from '../common/AppImage'
 import { ProductDetailsModal } from './ProductDetailsModal'
 
 interface InventoryRowProps {
@@ -15,13 +17,16 @@ export function InventoryRow({ product, categoryName, records, locationNames }: 
   const color = nameColor(categoryName)
   const [detailsOpen, setDetailsOpen] = useState(false)
 
-  const totalUnits = records.reduce((sum, record) => sum + record.quantity, 0)
+  const variants = productVariantStorage.getByProduct(product.id)
+  const variantUnits = variants.reduce((sum, v) => sum + v.quantity, 0)
+  const recordUnits = records.reduce((sum, r) => sum + r.quantity, 0)
+  const totalUnits = variants.length > 0 ? variantUnits : recordUnits
 
   return (
     <div className="card inventory-card-item" style={{ '--c': color } as CSSProperties}>
       <div className="inventory-card-cover">
         {product.image ? (
-          <img src={product.image} alt={product.name} className="inventory-card-avatar-img" />
+          <AppImage src={product.image} alt={product.name} className="inventory-card-avatar-img" />
         ) : (
           <span className="inventory-card-avatar">{product.name.charAt(0).toUpperCase()}</span>
         )}
@@ -30,7 +35,7 @@ export function InventoryRow({ product, categoryName, records, locationNames }: 
       <div className="inventory-card-body">
         <span className="inventory-card-name">{product.name}</span>
         <span className="inventory-card-meta">
-          {categoryName} &middot; {records.length} location{records.length === 1 ? '' : 's'}
+          {categoryName} &middot; {variants.length > 0 ? `${variants.length} variant${variants.length === 1 ? '' : 's'}` : `${records.length} location${records.length === 1 ? '' : 's'}`}
         </span>
       </div>
 

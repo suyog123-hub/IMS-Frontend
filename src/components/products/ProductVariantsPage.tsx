@@ -8,6 +8,9 @@ import { POPULAR_TAGS } from '../../utils/popularTags'
 import { EmptyState } from '../common/EmptyState'
 import { Pagination } from '../common/Pagination'
 import { PriceRangeFilter } from '../common/PriceRangeFilter'
+import { AppImage } from '../common/AppImage'
+
+import { EditVariantModal } from './EditVariantModal'
 
 const VARIANTS_PER_PAGE = 12
 
@@ -17,9 +20,10 @@ interface VariantCardProps {
   categoryName: string
   unitName: string
   color: string
+  onEdit: (variant: ProductVariant) => void
 }
 
-function VariantCard({ variant, productName, categoryName, unitName, color }: VariantCardProps) {
+function VariantCard({ variant, productName, categoryName, unitName, color, onEdit }: VariantCardProps) {
   const inStock = variant.quantity > 0
   const savedAmount = Math.max(0, variant.costPrice - variant.sellingPrice)
   const image = variant.image || undefined
@@ -28,7 +32,7 @@ function VariantCard({ variant, productName, categoryName, unitName, color }: Va
     <div className="card pcard">
       <div className={`pcard-cover${inStock ? '' : ' pcard-cover-out'}`}>
         {image ? (
-          <img src={image} alt={variant.name} className="pcard-cover-img" />
+          <AppImage src={image} alt={variant.name} className="pcard-cover-img" />
         ) : (
           <div
             className="pcard-cover-placeholder"
@@ -50,7 +54,13 @@ function VariantCard({ variant, productName, categoryName, unitName, color }: Va
           {variant.name}
         </h3>
 
-        {variant.size && <p className="pcard-size">Size: {variant.size}</p>}
+        {(variant.size || variant.color) && (
+          <p className="pcard-size">
+            {[variant.size ? `Size: ${variant.size}` : '', variant.color ? `Color: ${variant.color}` : '']
+              .filter(Boolean)
+              .join(' | ')}
+          </p>
+        )}
 
         <div className="pcard-meta">
           <span className="chip" style={{ '--chip-color': color } as CSSProperties}>
@@ -83,12 +93,28 @@ function VariantCard({ variant, productName, categoryName, unitName, color }: Va
           {productName}
         </div>
 
-        <div className="pcard-pricing">
-          <span className="pcard-current">{formatCurrency(variant.sellingPrice)}</span>
-          {variant.discountPercent > 0 && (
-            <span className="pcard-old">{formatCurrency(variant.costPrice)}</span>
-          )}
-          <span className="pcard-save">Save {formatCurrency(savedAmount)}</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
+          <div className="pcard-pricing" style={{ marginTop: 0 }}>
+            <span className="pcard-current">{formatCurrency(variant.sellingPrice)}</span>
+            {variant.discountPercent > 0 && variant.costPrice > 0 && (
+              <span className="pcard-old">{formatCurrency(variant.costPrice)}</span>
+            )}
+            {savedAmount > 0 && variant.discountPercent > 0 && (
+              <span className="pcard-save">Save {formatCurrency(savedAmount)}</span>
+            )}
+          </div>
+          <button
+            type="button"
+            className="btn btn-sm btn-secondary-outline"
+            onClick={() => onEdit(variant)}
+            style={{ fontSize: '11px', padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+          >
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+            </svg>
+            Edit
+          </button>
         </div>
       </div>
     </div>
@@ -120,6 +146,7 @@ export function ProductVariantsPage() {
     [categories.items]
   )
 
+  const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(null)
   const [query, setQuery] = useState('')
   const [categoryId, setCategoryId] = useState('all')
   const [page, setPage] = useState(1)
@@ -149,7 +176,7 @@ export function ProductVariantsPage() {
   const maxPrice = useMemo(() => {
     let max = 0
     for (const variant of variants.items) max = Math.max(max, variant.sellingPrice)
-    return max
+    return Math.max(max, 100)
   }, [variants.items])
 
   const countInRange = useCallback(
@@ -168,28 +195,41 @@ export function ProductVariantsPage() {
     const parsedMax = Number(priceMax.trim())
     const min = priceMin.trim() !== '' && Number.isFinite(parsedMin) ? parsedMin : null
     const max = priceMax.trim() !== '' && Number.isFinite(parsedMax) ? parsedMax : null
+
     return enriched.filter((row) => {
       if (categoryId !== 'all' && row.categoryId !== categoryId) return false
       if (q) {
         const hit =
           row.variant.name.toLowerCase().includes(q) ||
+          (row.variant.size ?? '').toLowerCase().includes(q) ||
+          (row.variant.color ?? '').toLowerCase().includes(q) ||
           row.productName.toLowerCase().includes(q) ||
           row.categoryName.toLowerCase().includes(q)
         if (!hit) return false
       }
-      if (vq && !row.variant.name.toLowerCase().includes(vq)) return false
-      if (cq && !row.variant.name.toLowerCase().includes(cq)) return false
+      if (vq) {
+        const vHit =
+          row.variant.name.toLowerCase().includes(vq) ||
+          (row.variant.size ?? '').toLowerCase().includes(vq)
+        if (!vHit) return false
+      }
+      if (cq) {
+        const cHit =
+          (row.variant.color ?? '').toLowerCase().includes(cq) ||
+          row.variant.name.toLowerCase().includes(cq)
+        if (!cHit) return false
+      }
       if (min !== null || max !== null) {
         const price = row.variant.sellingPrice
         if ((min !== null && price < min) || (max !== null && price > max)) return false
       }
       if (tag) {
         const quantity = row.variant.quantity
-        const status = quantity > 50 ? 'in' : quantity >= 10 ? 'low' : 'out'
+        const status = quantity >= 5 ? 'in' : quantity > 0 ? 'low' : 'out'
         if (tag === 'onsale' && row.variant.discountPercent <= 0) return false
-        if (tag === 'instock' && status !== 'in') return false
+        if (tag === 'instock' && quantity <= 0) return false
         if (tag === 'lowstock' && status !== 'low') return false
-        if (tag === 'outofstock' && status !== 'out') return false
+        if (tag === 'outofstock' && quantity > 0) return false
       }
       return true
     })
@@ -481,6 +521,7 @@ export function ProductVariantsPage() {
                   categoryName={row.categoryName}
                   unitName={row.unitName}
                   color={row.color}
+                  onEdit={(v) => setEditingVariant(v)}
                 />
               ))}
             </div>
@@ -494,6 +535,13 @@ export function ProductVariantsPage() {
         totalItems={filtered.length}
         pageSize={VARIANTS_PER_PAGE}
         onPageChange={setPage}
+      />
+
+      <EditVariantModal
+        open={Boolean(editingVariant)}
+        variant={editingVariant}
+        onClose={() => setEditingVariant(null)}
+        onSuccess={() => variants.refresh()}
       />
     </section>
   )

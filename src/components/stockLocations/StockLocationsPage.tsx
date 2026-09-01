@@ -7,6 +7,8 @@ import {
   isMainLocation,
   stockLocationStorage,
   countProductsAtLocation,
+  productVariantStorage,
+  productStorage,
 } from '../../storage'
 import { ConfirmDialog } from '../common/ConfirmDialog'
 import { StockLocationList } from './StockLocationList'
@@ -42,6 +44,35 @@ export function StockLocationsPage() {
     }
     return counts
   }, [inventory.items])
+
+  const variantCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    const allProducts = productStorage.getAll()
+
+    for (const location of items) {
+      let count = 0
+      const locationProductIds = new Set<string>()
+
+      for (const record of inventory.items) {
+        if (record.locationId === location.id) {
+          locationProductIds.add(record.productId)
+        }
+      }
+
+      if (isMainLocation(location)) {
+        for (const p of allProducts) {
+          locationProductIds.add(p.id)
+        }
+      }
+
+      for (const pId of locationProductIds) {
+        count += productVariantStorage.getByProduct(pId).length
+      }
+
+      counts.set(location.id, count)
+    }
+    return counts
+  }, [items, inventory.items])
 
   const childCounts = useMemo(() => {
     const counts = new Map<string, number>()
@@ -91,6 +122,7 @@ export function StockLocationsPage() {
         locations={items}
         parentNames={parentNames}
         productCounts={productCounts}
+        variantCounts={variantCounts}
         isMain={isMainLocation}
         onEdit={(location) => navigate(`/stock-locations/${location.id}/edit`)}
         onDelete={handleDelete}

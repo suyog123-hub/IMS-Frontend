@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { Inventory, Product } from '../../types/models'
 import { useCollection } from '../../hooks/useCollection'
-import { inventoryStorage, categoryStorage, productStorage, stockLocationStorage } from '../../storage'
+import { inventoryStorage, categoryStorage, productStorage, stockLocationStorage, productVariantStorage } from '../../storage'
 import { formatNumber } from '../../utils/format'
 import { nameColor } from '../../utils/color'
 import { EmptyState } from '../common/EmptyState'
@@ -15,6 +15,8 @@ interface StockRow {
   product: Product
   categoryName: string
   records: Inventory[]
+  totalQty: number
+  variantCount: number
 }
 
 export function InventoryPage() {
@@ -50,20 +52,26 @@ export function InventoryPage() {
     const result: StockRow[] = products
       .map((product) => {
         const records = byProduct.get(product.id) ?? []
+        const variants = productVariantStorage.getByProduct(product.id)
+        const variantUnits = variants.reduce((sum, v) => sum + v.quantity, 0)
+        const recordUnits = records.reduce((sum, r) => sum + r.quantity, 0)
+        const totalQty = variants.length > 0 ? variantUnits : recordUnits
+
         return {
           product,
           categoryName: categoryNames.get(product.categoryId) ?? 'Uncategorized',
           records,
+          totalQty,
+          variantCount: variants.length,
         }
       })
-      .filter((row) => row.records.length > 0)
+      .filter((row) => row.records.length > 0 || row.variantCount > 0 || row.product.quantity > 0)
 
     const q = query.trim().toLowerCase()
     return result.filter((row) => {
       if (categoryId !== 'all' && row.product.categoryId !== categoryId) return false
       if (stockStatus !== 'all') {
-        const totalQty = row.records.reduce((sum, record) => sum + record.quantity, 0)
-        const state = totalQty > 50 ? 'in' : totalQty >= 10 ? 'low' : 'out'
+        const state = row.totalQty >= 5 ? 'in' : row.totalQty > 0 ? 'low' : 'out'
         if (state !== stockStatus) return false
       }
       if (!q) return true
@@ -74,10 +82,7 @@ export function InventoryPage() {
   }, [inventory, products, categoryNames, query, categoryId, stockStatus])
 
   const distinctProducts = rows.length
-  const totalUnits = rows.reduce(
-    (sum, row) => sum + row.records.reduce((n, record) => n + record.quantity, 0),
-    0
-  )
+  const totalUnits = rows.reduce((sum, row) => sum + row.totalQty, 0)
 
   const totalPages = Math.max(1, Math.ceil(rows.length / INVENTORY_PER_PAGE))
   const currentPage = Math.min(page, totalPages)

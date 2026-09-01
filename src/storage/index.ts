@@ -31,3 +31,9 @@ export {
 export { STORAGE_KEYS } from './keys'
 export { createStorage, keyExists, writeSeed } from './base'
 export type { StorageModule, NewRecord, RecordPatch } from './base'
+export {
+  saveImageBlob,
+  getImageBlob,
+  deleteImageBlob,
+  getImageObjectUrl,
+} from './imageBlobStorage'

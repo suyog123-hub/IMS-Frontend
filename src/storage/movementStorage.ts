@@ -3,6 +3,7 @@ import type { StorageModule } from './base'
 import { createStorage } from './base'
 import { STORAGE_KEYS } from './keys'
 import { inventoryStorage } from './inventoryStorage'
+import { productVariantStorage } from './productVariantStorage'
 
 const base = createStorage<StockMovement>(STORAGE_KEYS.stockMovements)
 
@@ -34,9 +35,15 @@ export function migrateLegacyTransfers(): void {
   }
 }
 
-export function recordInbound(productId: string, locationId: string, quantity: number): StockMovement {
+export function recordInbound(
+  productId: string,
+  locationId: string,
+  quantity: number,
+  variantId?: string
+): StockMovement {
   return base.create({
     productId,
+    variantId: variantId || undefined,
     fromLocationId: null,
     toLocationId: locationId,
     quantity,
@@ -54,7 +61,8 @@ export function transferStock(
   productId: string,
   fromLocationId: string,
   toLocationId: string,
-  quantity: number
+  quantity: number,
+  variantId?: string
 ): TransferResult {
   if (!Number.isInteger(quantity) || quantity <= 0) {
     return { ok: false, error: 'Quantity must be a positive whole number.' }
@@ -83,6 +91,7 @@ export function transferStock(
 
   const transferOut = base.create({
     productId,
+    variantId: variantId || undefined,
     fromLocationId,
     toLocationId,
     quantity,
@@ -90,6 +99,7 @@ export function transferStock(
   })
   base.create({
     productId,
+    variantId: variantId || undefined,
     fromLocationId,
     toLocationId,
     quantity,
@@ -102,7 +112,8 @@ export function recordSale(
   productId: string,
   locationId: string,
   quantity: number,
-  reference = ''
+  reference = '',
+  variantId?: string
 ): TransferResult {
   if (!Number.isInteger(quantity) || quantity <= 0) {
     return { ok: false, error: 'Quantity must be a positive whole number.' }
@@ -117,8 +128,17 @@ export function recordSale(
 
   inventoryStorage.update(source.id, { quantity: source.quantity - quantity })
 
+  if (variantId) {
+    const variant = productVariantStorage.getById(variantId)
+    if (variant) {
+      const nextQty = Math.max(0, variant.quantity - quantity)
+      productVariantStorage.update(variantId, { quantity: nextQty })
+    }
+  }
+
   const sale = base.create({
     productId,
+    variantId: variantId || undefined,
     fromLocationId: locationId,
     toLocationId: null,
     quantity,
@@ -133,7 +153,8 @@ export function recordReturn(
   locationId: string,
   quantity: number,
   reference = '',
-  reason = ''
+  reason = '',
+  variantId?: string
 ): TransferResult {
   if (!Number.isInteger(quantity) || quantity <= 0) {
     return { ok: false, error: 'Quantity must be a positive whole number.' }
@@ -148,8 +169,16 @@ export function recordReturn(
     inventoryStorage.create({ productId, locationId, quantity })
   }
 
+  if (variantId) {
+    const variant = productVariantStorage.getById(variantId)
+    if (variant) {
+      productVariantStorage.update(variantId, { quantity: variant.quantity + quantity })
+    }
+  }
+
   const returned = base.create({
     productId,
+    variantId: variantId || undefined,
     fromLocationId: null,
     toLocationId: locationId,
     quantity,

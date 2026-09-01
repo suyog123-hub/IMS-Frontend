@@ -9,7 +9,8 @@ const base = createStorage<ProductVariant>(STORAGE_KEYS.productVariants)
 function withSellingPrice(input: Partial<ProductVariantInput>, fallback: ProductVariant) {
   const costPrice = input.costPrice ?? fallback.costPrice
   const discountPercent = input.discountPercent ?? fallback.discountPercent
-  return { ...input, sellingPrice: calculateSellingPrice(costPrice, discountPercent) }
+  const sellingPrice = input.sellingPrice ?? calculateSellingPrice(costPrice, discountPercent)
+  return { ...input, sellingPrice }
 }
 
 export type ProductVariantStorageModule = Omit<
@@ -28,7 +29,7 @@ export const productVariantStorage: ProductVariantStorageModule = {
   getById: (id) => base.getById(id),
   getByProduct: (productId) => base.getAll().filter((variant) => variant.productId === productId),
   create: (input) => {
-    const sellingPrice = calculateSellingPrice(input.costPrice, input.discountPercent)
+    const sellingPrice = input.sellingPrice ?? calculateSellingPrice(input.costPrice, input.discountPercent)
     return base.create({ ...input, sellingPrice })
   },
   update: (id, input) => {

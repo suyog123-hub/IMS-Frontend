@@ -597,15 +597,22 @@ textarea.input {
   color: var(--text-faint);
 }
 
+.variants-editor-list,
 .variants-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+  overflow-x: auto;
+  padding-right: 6px;
+  padding-bottom: 6px;
 }
 
 .variant-editor-row {
   display: grid;
-  grid-template-columns: 54px minmax(120px, 1.4fr) repeat(4, minmax(90px, 1fr)) auto;
+  grid-template-columns: 54px minmax(120px, 1.4fr) repeat(6, minmax(85px, 1fr)) auto;
+  min-width: 920px;
   gap: 10px;
   align-items: start;
   background: var(--surface);
@@ -2892,13 +2899,15 @@ textarea.input {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface-muted);
-  overflow: hidden;
+  overflow-x: auto;
 }
 
 .variant-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 40px 1.4fr 120px 130px 110px;
   align-items: center;
-  gap: 10px;
+  gap: 16px;
+  min-width: 580px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
@@ -2927,6 +2936,9 @@ textarea.input {
 }
 
 .variant-thumb {
+  position: sticky;
+  left: 14px;
+  z-index: 2;
   width: 40px;
   height: 40px;
   flex-shrink: 0;
@@ -2936,7 +2948,7 @@ textarea.input {
   border-radius: var(--radius-xs);
   overflow: hidden;
   border: 1px solid var(--border);
-  background: var(--surface-muted);
+  background: inherit;
   font-size: 15px;
   font-weight: 700;
   color: var(--text-faint);
@@ -2950,15 +2962,42 @@ textarea.input {
 }
 
 .variant-row-header .variant-thumb {
-  background: transparent;
+  background: var(--surface-muted);
   border-color: transparent;
 }
 
 .variant-row-name {
-  flex: 1;
+  position: sticky;
+  left: 70px;
+  z-index: 2;
+  background: inherit;
   font-weight: 600;
   min-width: 0;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 8px;
+  box-shadow: 4px 0 8px -4px rgba(0, 0, 0, 0.12);
+  cursor: default;
+}
+
+.variant-row-name[title]:hover::after {
+  content: attr(title);
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--surface);
+  color: var(--text);
+  padding: 5px 12px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+  z-index: 20;
 }
 
 .variant-row-meta {
@@ -3007,6 +3046,7 @@ textarea.input {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  text-align: right;
 }
 
 .data-list {

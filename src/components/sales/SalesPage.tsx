@@ -1,10 +1,11 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import {
   categoryStorage,
   inventoryStorage,
   movementStorage,
   productStorage,
+  productVariantStorage,
   recordSale,
   stockLocationStorage,
 } from '../../storage'
@@ -18,39 +19,142 @@ import {
   CHANNEL_OPTIONS,
   locationChannel,
 } from '../../utils/channels'
-import {
-  validateSale,
-  type SaleFormErrors,
-  type SaleFormValues,
-} from '../../utils/validation'
 import { EmptyState } from '../common/EmptyState'
 import { Pagination } from '../common/Pagination'
 import { QuickFilterPanel } from '../common/QuickFilterPanel'
 import { MovementRow } from '../common/MovementRow'
 import { Field } from '../common/Field'
+import { AppImage } from '../common/AppImage'
 import { toastError, toastSuccess } from '../../utils/toast'
+
+interface SaleItemDraft {
+  key: string
+  selectedId: string
+  quantity: string
+}
+
+function newSaleItemDraft(): SaleItemDraft {
+  return {
+    key: `sitem_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+    selectedId: '',
+    quantity: '',
+  }
+}
 
 const SALES_PER_PAGE = 6
 
 export function SalesPage() {
   const products = useCollection(productStorage)
+  const productVariants = useCollection(productVariantStorage)
   const categories = useCollection(categoryStorage)
   const locations = useCollection(stockLocationStorage)
   const inventory = useCollection(inventoryStorage)
   const movements = useCollection(movementStorage)
 
-  const [values, setValues] = useState<SaleFormValues>({
-    productId: '',
-    locationId: '',
-    quantity: '',
-    reference: '',
-  })
-  const [errors, setErrors] = useState<SaleFormErrors>({})
+  const [locationId, setLocationId] = useState('')
+  const [reference, setReference] = useState('')
+  const [itemDrafts, setItemDrafts] = useState<SaleItemDraft[]>([newSaleItemDraft()])
+  const [errors, setErrors] = useState<{
+    locationId?: string
+    items?: Record<string, { selectedId?: string; quantity?: string }>
+  }>({})
+  const listRef = useRef<HTMLDivElement>(null)
 
   const [query, setQuery] = useState('')
-  const [channel, setChannel] = useState('all')
-  const [categoryId, setCategoryId] = useState('all')
+  const [channelFilter, setChannelFilter] = useState('all')
+  const [categoryIdFilter, setCategoryIdFilter] = useState('all')
   const [page, setPage] = useState(1)
+
+  const variantOptions = useMemo(() => {
+    const options: Array<{
+      id: string
+      variantId?: string
+      productId: string
+      name: string
+      label: string
+      image?: string
+      productImage?: string
+    }> = []
+
+    for (const product of products.items) {
+      const list = productVariantStorage.getByProduct(product.id)
+      if (list.length > 0) {
+        for (const variant of list) {
+          const details = [
+            variant.size ? `Size: ${variant.size}` : '',
+            variant.color ? `Color: ${variant.color}` : '',
+          ]
+            .filter(Boolean)
+            .join(', ')
+
+          options.push({
+            id: variant.id,
+            variantId: variant.id,
+            productId: product.id,
+            name: variant.name,
+            label: `${variant.name} (${product.name}${details ? ` — ${details}` : ''})`,
+            image: variant.image,
+            productImage: product.image,
+          })
+        }
+      } else {
+        options.push({
+          id: product.id,
+          productId: product.id,
+          name: product.name,
+          label: `${product.name} (Standard)`,
+          productImage: product.image,
+        })
+      }
+    }
+
+    return options.sort((a, b) => a.label.localeCompare(b.label))
+  }, [products.items, productVariants.items])
+
+  const getAvailableStock = (selectedId: string, locId: string): number => {
+    if (!selectedId || !locId) return 0
+    const opt = variantOptions.find((o) => o.id === selectedId)
+    if (!opt) return 0
+
+    if (opt.variantId) {
+      const variant = productVariantStorage.getById(opt.variantId)
+      if (!variant) return 0
+      return variant.quantity
+    } else {
+      const mainRecord = inventory.items.find(
+        (r) => r.productId === opt.productId && r.locationId === locId
+      )
+      return mainRecord ? mainRecord.quantity : 0
+    }
+  }
+
+  const addItemRow = () => {
+    setItemDrafts((current) => [...current, newSaleItemDraft()])
+    setTimeout(() => {
+      if (listRef.current) {
+        listRef.current.scrollTo({
+          top: listRef.current.scrollHeight,
+          behavior: 'smooth',
+        })
+      }
+    }, 60)
+  }
+
+  const removeItemRow = (key: string) => {
+    if (itemDrafts.length <= 1) return
+    setItemDrafts((current) => current.filter((item) => item.key !== key))
+  }
+
+  const updateItemRow = (key: string, patch: Partial<SaleItemDraft>) => {
+    setItemDrafts((current) =>
+      current.map((item) => (item.key === key ? { ...item, ...patch } : item))
+    )
+    setErrors((prev) => {
+      if (!prev.items?.[key]) return prev
+      const { [key]: _cleared, ...restItems } = prev.items
+      return { ...prev, items: restItems }
+    })
+  }
 
   const saleRecords = useMemo(
     () =>
@@ -60,36 +164,27 @@ export function SalesPage() {
     [movements.items]
   )
 
-  const available = useMemo(() => {
-    if (!values.productId || !values.locationId) return null
-    return (
-      inventory.items.find(
-        (item) => item.productId === values.productId && item.locationId === values.locationId
-      )?.quantity ?? 0
-    )
-  }, [values.productId, values.locationId, inventory.items])
-
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     const locById = new Map(locations.items.map((location) => [location.id, location]))
     return saleRecords.filter((movement) => {
-      if (channel !== 'all') {
+      if (channelFilter !== 'all') {
         const loc = locById.get(movement.fromLocationId ?? '')
-        if (!loc || locationChannel(loc) !== channel) return false
+        if (!loc || locationChannel(loc) !== channelFilter) return false
       }
       const product = products.items.find((item) => item.id === movement.productId)
-      if (categoryId !== 'all' && product?.categoryId !== categoryId) return false
+      if (categoryIdFilter !== 'all' && product?.categoryId !== categoryIdFilter) return false
       if (!q) return true
       const categoryName =
         categories.items.find((category) => category.id === product?.categoryId)?.name ?? ''
-      const reference = movement.reference ?? ''
+      const refStr = movement.reference ?? ''
       return (
         (product?.name ?? '').toLowerCase().includes(q) ||
         categoryName.toLowerCase().includes(q) ||
-        reference.toLowerCase().includes(q)
+        refStr.toLowerCase().includes(q)
       )
     })
-  }, [saleRecords, query, channel, categoryId, locations.items, products.items, categories.items])
+  }, [saleRecords, query, channelFilter, categoryIdFilter, locations.items, products.items, categories.items])
 
   const totalUnitsSold = saleRecords.reduce((sum, movement) => sum + movement.quantity, 0)
   const startOfToday = new Date()
@@ -98,41 +193,72 @@ export function SalesPage() {
     .filter((movement) => new Date(movement.createdAt).getTime() >= startOfToday.getTime())
     .reduce((sum, movement) => sum + movement.quantity, 0)
 
-  const productName = products.items.find((product) => product.id === values.productId)?.name
-  const locationName = locations.items.find((location) => location.id === values.locationId)?.name
-
-  const updateValues = (patch: Partial<SaleFormValues>) => {
-    setValues((current) => ({ ...current, ...patch }))
-    const cleared: SaleFormErrors = {}
-    for (const key of Object.keys(patch)) {
-      cleared[key as keyof SaleFormErrors] = undefined
-    }
-    setErrors((current) => ({ ...current, ...cleared }))
-  }
+  const locationName = locations.items.find((location) => location.id === locationId)?.name
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault()
-    const validationErrors = validateSale(values, products.items, locations.items, available)
-    if (Object.values(validationErrors).some(Boolean)) {
-      setErrors(validationErrors)
-      toastError('Please fix the highlighted fields before recording the sale.')
+    const newErrors: {
+      locationId?: string
+      items: Record<string, { selectedId?: string; quantity?: string }>
+    } = { items: {} }
+
+    if (!locationId) {
+      newErrors.locationId = 'Please select a sales location.'
+    }
+
+    let hasItemError = false
+
+    for (const item of itemDrafts) {
+      const itemErr: { selectedId?: string; quantity?: string } = {}
+      if (!item.selectedId) {
+        itemErr.selectedId = 'Please select a variant.'
+        hasItemError = true
+      }
+      const qty = toNumber(item.quantity)
+      const avail = getAvailableStock(item.selectedId, locationId)
+
+      if (qty === null || !Number.isInteger(qty) || qty <= 0) {
+        itemErr.quantity = 'Quantity must be a positive whole number.'
+        hasItemError = true
+      } else if (qty > avail) {
+        itemErr.quantity = `Cannot sell more than available stock (${formatNumber(avail)} available).`
+        hasItemError = true
+      }
+
+      if (itemErr.selectedId || itemErr.quantity) {
+        newErrors.items[item.key] = itemErr
+      }
+    }
+
+    if (newErrors.locationId || hasItemError) {
+      setErrors(newErrors)
+      toastError('Please fix highlighted fields before recording the sale.')
       return
     }
 
-    const quantity = toNumber(values.quantity) ?? 0
-    const result = recordSale(values.productId, values.locationId, quantity, values.reference)
-    if (!result.ok) {
-      setErrors((current) => ({ ...current, quantity: result.error }))
-      toastError(result.error ?? 'Could not record the sale. Please try again.')
-      return
+    let successCount = 0
+    for (const item of itemDrafts) {
+      const opt = variantOptions.find((o) => o.id === item.selectedId)
+      if (!opt) continue
+      const qty = toNumber(item.quantity) ?? 0
+
+      const res = recordSale(opt.productId, locationId, qty, reference, opt.variantId)
+      if (res.ok) {
+        successCount++
+      }
     }
 
-    inventory.refresh()
-    movements.refresh()
-    toastSuccess(
-      `Sold ${formatNumber(quantity)} of "${productName}"${locationName ? ` at ${locationName}` : ''}.`
-    )
-    setValues((current) => ({ ...current, quantity: '', reference: '' }))
+    if (successCount > 0) {
+      inventory.refresh()
+      movements.refresh()
+      productVariants.refresh()
+      toastSuccess(
+        `Successfully recorded sale for ${successCount} variant item${successCount > 1 ? 's' : ''}${locationName ? ` at ${locationName}` : ''}.`
+      )
+      setItemDrafts([newSaleItemDraft()])
+      setReference('')
+      setErrors({})
+    }
   }
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / SALES_PER_PAGE))
@@ -144,7 +270,7 @@ export function SalesPage() {
     <section>
       <div className="page-header">
         <h1>Record Sales</h1>
-        <p>Log stock sold at any storefront, pop-up, or online channel. Every sale reduces stock.</p>
+        <p>Log stock sold at any storefront, pop-up, or online channel. Every sale reduces variant stock.</p>
       </div>
 
       <div className="inventory-stats">
@@ -163,70 +289,192 @@ export function SalesPage() {
       </div>
 
       <div className="card">
-        <form className="form form-grid" onSubmit={handleSubmit} noValidate>
-          <Field label="Product" error={errors.productId} className="field-span-2">
-            <select
-              value={values.productId}
-              onChange={(event) => updateValues({ productId: event.target.value })}
-              className="input"
+        <form className="form" onSubmit={handleSubmit} noValidate>
+          <div className="form-grid">
+            <Field
+              label="Sales Location / Channel"
+              error={errors.locationId}
             >
-              <option value="">Select product…</option>
-              {products.items
-                .slice()
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.name}
+              <select
+                value={locationId}
+                onChange={(event) => {
+                  setLocationId(event.target.value)
+                  setErrors((prev) => ({ ...prev, locationId: undefined }))
+                }}
+                className="input"
+              >
+                <option value="">Select location where sold…</option>
+                {locations.items.map((loc) => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name} — {CHANNEL_LABELS[locationChannel(loc)]}
                   </option>
                 ))}
-            </select>
-          </Field>
+              </select>
+            </Field>
 
-          <Field
-            label="Location"
-            error={errors.locationId}
-            hint={available !== null ? `${formatNumber(available)} available here` : undefined}
-            className="field-span-2"
-          >
-            <select
-              value={values.locationId}
-              onChange={(event) => updateValues({ locationId: event.target.value })}
-              className="input"
+            <Field label="Order / Receipt Ref" hint="Optional, e.g. Order #1042">
+              <input
+                type="text"
+                value={reference}
+                onChange={(event) => setReference(event.target.value)}
+                placeholder="e.g. POS-2024-001"
+                className="input"
+              />
+            </Field>
+          </div>
+
+          <div className="sale-items-section" style={{ marginTop: '20px' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justify: 'space-between',
+                marginBottom: '12px',
+                flexWrap: 'wrap',
+                gap: '8px',
+              }}
             >
-              <option value="">Select where it sold…</option>
-              {locations.items.map((location) => (
-                <option key={location.id} value={location.id}>
-                  {location.name} — {CHANNEL_LABELS[locationChannel(location)]}
-                </option>
-              ))}
-            </select>
-          </Field>
+              <h3 style={{ fontSize: '15px', fontWeight: 600, margin: 0 }}>
+                Sale Items ({itemDrafts.length})
+              </h3>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={addItemRow}
+              >
+                + Add Another Variant
+              </button>
+            </div>
 
-          <Field label="Quantity" error={errors.quantity} hint="Whole units only.">
-            <input
-              type="number"
-              min="1"
-              step="1"
-              value={values.quantity}
-              onChange={(event) => updateValues({ quantity: event.target.value })}
-              placeholder="e.g. 4"
-              className="input"
-            />
-          </Field>
+            <div
+              className="sale-items-list"
+              ref={listRef}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+                maxHeight: '380px',
+                overflowY: 'auto',
+                paddingRight: '6px',
+                paddingBottom: '4px',
+              }}
+            >
+              {itemDrafts.map((item, idx) => {
+                const selectedOpt = variantOptions.find((o) => o.id === item.selectedId)
+                const availableStock = locationId
+                  ? getAvailableStock(item.selectedId, locationId)
+                  : 0
+                const itemErr = errors.items?.[item.key] ?? {}
+                const imageSrc = selectedOpt?.image || selectedOpt?.productImage
 
-          <Field label="Order / Receipt Ref" error={errors.reference} hint="Optional, e.g. Shopee order ID">
-            <input
-              type="text"
-              value={values.reference}
-              onChange={(event) => updateValues({ reference: event.target.value })}
-              placeholder="e.g. SH-2024-01"
-              className="input"
-            />
-          </Field>
+                return (
+                  <div
+                    key={item.key}
+                    className="card"
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '50px minmax(200px, 1.8fr) minmax(110px, 1fr) minmax(120px, 1.2fr) auto',
+                      gap: '12px',
+                      alignItems: 'start',
+                      padding: '14px',
+                      background: 'var(--surface)',
+                      border: '1px solid var(--border)',
+                    }}
+                  >
+                    <div style={{ paddingTop: '24px' }}>
+                      <div
+                        style={{
+                          width: '42px',
+                          height: '42px',
+                          borderRadius: 'var(--radius-sm)',
+                          overflow: 'hidden',
+                          background: 'var(--surface-muted)',
+                          border: '1px solid var(--border)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justify: 'center',
+                          fontWeight: 700,
+                          color: 'var(--primary)',
+                        }}
+                      >
+                        {imageSrc ? (
+                          <AppImage src={imageSrc} alt={selectedOpt?.name || 'Variant'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <span>{(selectedOpt?.name || 'V').charAt(0).toUpperCase()}</span>
+                        )}
+                      </div>
+                    </div>
 
-          <div className="form-actions form-actions-span">
+                    <Field label={`Variant Item #${idx + 1}`} error={itemErr.selectedId}>
+                      <select
+                        value={item.selectedId}
+                        onChange={(e) => updateItemRow(item.key, { selectedId: e.target.value })}
+                        className="input"
+                      >
+                        <option value="">Select product variant…</option>
+                        {variantOptions.map((opt) => {
+                          const optAvail = locationId
+                            ? getAvailableStock(opt.id, locationId)
+                            : null
+                          return (
+                            <option key={opt.id} value={opt.id}>
+                              {opt.label} {optAvail !== null ? `(${optAvail} avail)` : ''}
+                            </option>
+                          )
+                        })}
+                      </select>
+                    </Field>
+
+                    <Field label="Available Stock">
+                      <input
+                        type="text"
+                        readOnly
+                        value={
+                          locationId && item.selectedId
+                            ? `${formatNumber(availableStock)} units`
+                            : '—'
+                        }
+                        className="input"
+                        style={{
+                          background: 'var(--surface-muted)',
+                          fontWeight: 600,
+                          color: availableStock > 0 ? '#10b981' : '#ef4444',
+                        }}
+                      />
+                    </Field>
+
+                    <Field label="Quantity Sold" error={itemErr.quantity}>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={item.quantity}
+                        onChange={(e) => updateItemRow(item.key, { quantity: e.target.value })}
+                        placeholder="e.g. 2"
+                        className="input"
+                      />
+                    </Field>
+
+                    <div style={{ paddingTop: '24px' }}>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-danger-outline"
+                        disabled={itemDrafts.length <= 1}
+                        onClick={() => removeItemRow(item.key)}
+                        title="Remove item"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="form-actions" style={{ marginTop: '20px' }}>
             <button type="submit" className="btn btn-primary">
-              Record Sale
+              Record Sale ({itemDrafts.length} {itemDrafts.length === 1 ? 'item' : 'items'})
             </button>
           </div>
         </form>
@@ -253,7 +501,7 @@ export function SalesPage() {
               {
                 label: 'Channel',
                 kind: 'location',
-                value: channel,
+                value: channelFilter,
                 options: [
                   { value: 'all', label: 'All' },
                   ...CHANNEL_OPTIONS.map((option) => ({
@@ -263,14 +511,14 @@ export function SalesPage() {
                   })),
                 ],
                 onChange: (value) => {
-                  setChannel(value)
+                  setChannelFilter(value)
                   setPage(1)
                 },
               },
               {
                 label: 'Category',
                 kind: 'category',
-                value: categoryId,
+                value: categoryIdFilter,
                 options: [
                   { value: 'all', label: 'All' },
                   ...categories.items.map((category) => ({
@@ -280,14 +528,14 @@ export function SalesPage() {
                   })),
                 ],
                 onChange: (value) => {
-                  setCategoryId(value)
+                  setCategoryIdFilter(value)
                   setPage(1)
                 },
               },
             ]}
             onReset={() => {
-              setChannel('all')
-              setCategoryId('all')
+              setChannelFilter('all')
+              setCategoryIdFilter('all')
               setQuery('')
               setPage(1)
             }}

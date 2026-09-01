@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import type { Category, Product, ProductVariant, Unit } from '../../types/models'
 import { formatCurrency, formatNumber } from '../../utils/format'
 import { nameColor } from '../../utils/color'
-import { POPULAR_TAGS } from '../../utils/popularTags'
 import { EmptyState } from '../common/EmptyState'
 import { Pagination } from '../common/Pagination'
-import { PriceRangeFilter } from '../common/PriceRangeFilter'
+import { AppImage } from '../common/AppImage'
 import { VariantsModal } from './VariantsModal'
 
 interface ProductCardProps {
@@ -35,11 +34,16 @@ function ProductCard({
   const discountPercent = product.discountPercent
   const savedAmount = Math.max(0, product.costPrice - product.sellingPrice)
 
+  const variantPrices = variants.map((v) => v.sellingPrice).filter((p) => p > 0)
+  const minPrice = variantPrices.length > 0 ? Math.min(...variantPrices) : 0
+  const maxPrice = variantPrices.length > 0 ? Math.max(...variantPrices) : 0
+  const hasVariantPrice = variantPrices.length > 0
+
   return (
     <div className="card pcard">
       <div className={`pcard-cover${inStock ? '' : ' pcard-cover-out'}`}>
         {product.image ? (
-          <img src={product.image} alt={product.name} className="pcard-cover-img" />
+          <AppImage src={product.image} alt={product.name} className="pcard-cover-img" />
         ) : (
           <div
             className="pcard-cover-placeholder"
@@ -115,11 +119,22 @@ function ProductCard({
         </div>
 
         <div className="pcard-pricing">
-          <span className="pcard-current">{formatCurrency(product.sellingPrice)}</span>
-          {discountPercent > 0 && (
+          {hasVariantPrice ? (
+            <span className="pcard-current">
+              {minPrice === maxPrice
+                ? formatCurrency(minPrice)
+                : `${formatCurrency(minPrice)} – ${formatCurrency(maxPrice)}`}
+            </span>
+          ) : product.sellingPrice > 0 ? (
+            <span className="pcard-current">{formatCurrency(product.sellingPrice)}</span>
+          ) : null}
+
+          {discountPercent > 0 && product.costPrice > 0 && (
             <span className="pcard-old">{formatCurrency(product.costPrice)}</span>
           )}
-          <span className="pcard-save">Save {formatCurrency(savedAmount)}</span>
+          {savedAmount > 0 && discountPercent > 0 && (
+            <span className="pcard-save">Save {formatCurrency(savedAmount)}</span>
+          )}
         </div>
 
         {variants.length > 0 && (
@@ -203,36 +218,12 @@ export function ProductList({
     return map
   }, [variants])
 
-  const maxPrice = useMemo(() => {
-    let max = 0
-    for (const product of products) {
-      max = Math.max(max, product.sellingPrice)
-      for (const variant of variantsByProduct.get(product.id) ?? []) {
-        max = Math.max(max, variant.sellingPrice)
-      }
-    }
-    return max
-  }, [products, variantsByProduct])
-
-  const countInRange = useCallback(
-    (min: number, max: number): number => {
-      return products.filter((product) => {
-        const productVariants = variantsByProduct.get(product.id) ?? []
-        const inRange = (price: number) => price >= min && price <= max
-        return inRange(product.sellingPrice) || productVariants.some((v) => inRange(v.sellingPrice))
-      }).length
-    },
-    [products, variantsByProduct]
-  )
-
   const [query, setQuery] = useState('')
   const [categoryId, setCategoryId] = useState('all')
+  const [unitFilter, setUnitFilter] = useState('all')
+  const [stockStatus, setStockStatus] = useState<'all' | 'in' | 'low' | 'out'>('all')
+  const [hasVariantsFilter, setHasVariantsFilter] = useState<'all' | 'yes' | 'no'>('all')
   const [page, setPage] = useState(1)
-  const [priceMin, setPriceMin] = useState('')
-  const [priceMax, setPriceMax] = useState('')
-  const [variantQuery, setVariantQuery] = useState('')
-  const [colorQuery, setColorQuery] = useState('')
-  const [tag, setTag] = useState('')
   const [loading, setLoading] = useState(() => {
     if (skeletonShown) return false
     skeletonShown = true
@@ -247,52 +238,37 @@ export function ProductList({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    const vq = variantQuery.trim().toLowerCase()
-    const cq = colorQuery.trim().toLowerCase()
-    const parsedMin = Number(priceMin.trim())
-    const parsedMax = Number(priceMax.trim())
-    const min = priceMin.trim() !== '' && Number.isFinite(parsedMin) ? parsedMin : null
-    const max = priceMax.trim() !== '' && Number.isFinite(parsedMax) ? parsedMax : null
     return products.filter((product) => {
       if (categoryId !== 'all' && product.categoryId !== categoryId) return false
+      if (unitFilter !== 'all' && product.unitId !== unitFilter) return false
+
       const name = product.name.toLowerCase()
       const category = (categoryName.get(product.categoryId) ?? '').toLowerCase()
       if (q && !name.includes(q) && !category.includes(q)) return false
+
       const productVariants = variantsByProduct.get(product.id) ?? []
-      if (vq && !productVariants.some((variant) => variant.name.toLowerCase().includes(vq))) {
-        return false
-      }
-      if (cq && !productVariants.some((variant) => variant.name.toLowerCase().includes(cq))) {
-        return false
-      }
-      if (min !== null || max !== null) {
-        const inRange = (price: number) =>
-          (min === null || price >= min) && (max === null || price <= max)
-        const priceMatch =
-          inRange(product.sellingPrice) ||
-          productVariants.some((variant) => inRange(variant.sellingPrice))
-        if (!priceMatch) return false
-      }
-      if (tag) {
+
+      if (hasVariantsFilter === 'yes' && productVariants.length === 0) return false
+      if (hasVariantsFilter === 'no' && productVariants.length > 0) return false
+
+      if (stockStatus !== 'all') {
         const quantity = productVariants.length
           ? productVariants.reduce((sum, variant) => sum + variant.quantity, 0)
           : product.quantity
-        const status = quantity > 50 ? 'in' : quantity >= 10 ? 'low' : 'out'
-        if (tag === 'onsale' && product.discountPercent <= 0) return false
-        if (tag === 'instock' && status !== 'in') return false
-        if (tag === 'lowstock' && status !== 'low') return false
-        if (tag === 'outofstock' && status !== 'out') return false
+        const status = quantity >= 5 ? 'in' : quantity > 0 ? 'low' : 'out'
+        if (stockStatus !== status) return false
       }
+
       return true
     })
-  }, [products, query, categoryId, categoryName, variantsByProduct, variantQuery, colorQuery, priceMin, priceMax, tag])
+  }, [products, query, categoryId, unitFilter, stockStatus, hasVariantsFilter, categoryName, variantsByProduct])
 
   const resetFilters = () => {
-    setPriceMin('')
-    setPriceMax('')
-    setVariantQuery('')
-    setColorQuery('')
-    setTag('')
+    setCategoryId('all')
+    setUnitFilter('all')
+    setStockStatus('all')
+    setHasVariantsFilter('all')
+    setQuery('')
     setPage(1)
   }
 
@@ -346,136 +322,153 @@ export function ProductList({
             </svg>
             Reset
           </button>
-</div>
-
-        <PriceRangeFilter
-          appliedMin={priceMin}
-          appliedMax={priceMax}
-          maxValue={maxPrice}
-          totalCount={products.length}
-          countInRange={countInRange}
-          onApply={(min, max) => {
-            setPriceMin(min)
-            setPriceMax(max)
-            setPage(1)
-          }}
-          onClear={() => {
-            setPriceMin('')
-            setPriceMax('')
-            setPage(1)
-          }}
-        />
-
-        <div className="filter-group">
-          <label htmlFor="filter-variant">
-            <svg
-              viewBox="0 0 24 24"
-              width="13"
-              height="13"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <rect x="3" y="3" width="7" height="7" rx="1.5" />
-              <rect x="14" y="3" width="7" height="7" rx="1.5" />
-              <rect x="3" y="14" width="7" height="7" rx="1.5" />
-              <rect x="14" y="14" width="7" height="7" rx="1.5" />
-            </svg>
-            Search Variant
-          </label>
-          <input
-            id="filter-variant"
-            type="text"
-            value={variantQuery}
-            onChange={(event) => {
-              setVariantQuery(event.target.value)
-              setPage(1)
-            }}
-            placeholder="e.g. Large, XL"
-            className="input filter-input"
-          />
         </div>
 
         <div className="filter-group">
-          <label htmlFor="filter-color">
-            <svg
-              viewBox="0 0 24 24"
-              width="13"
-              height="13"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M12 21.4 6.3 15.7a7 7 0 1 1 11.4 0Z" />
-            </svg>
-            Search Color
-          </label>
-          <input
-            id="filter-color"
-            type="text"
-            value={colorQuery}
-            onChange={(event) => {
-              setColorQuery(event.target.value)
-              setPage(1)
-            }}
-            placeholder="e.g. Red, Black"
-            className="input filter-input"
-          />
-        </div>
-
-        <div className="filter-group">
-          <label>
-            <svg
-              viewBox="0 0 24 24"
-              width="13"
-              height="13"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M20.6 13.4 11 3H3v8l10.4 10.6a2 2 0 0 0 2.8 0l4.4-4.4a2 2 0 0 0 0-2.8Z" />
-              <circle cx="7.5" cy="7.5" r="1.5" />
-            </svg>
-            Popular Tags
-          </label>
-          <div className="filter-chips" role="group" aria-label="Filter by popular tag">
+          <label>Category</label>
+          <div className="filter-chips" role="group" aria-label="Filter by category">
             <button
               type="button"
-              className={`chip-btn${tag === '' ? ' chip-btn-active' : ''}`}
+              className={`chip-btn${categoryId === 'all' ? ' chip-btn-active' : ''}`}
               onClick={() => {
-                setTag('')
+                setCategoryId('all')
                 setPage(1)
               }}
             >
               All
             </button>
-            {POPULAR_TAGS.map((popularTag) => (
+            {categories.map((category) => (
               <button
-                key={popularTag.id}
+                key={category.id}
                 type="button"
-                className={`chip-btn${tag === popularTag.id ? ' chip-btn-active' : ''}`}
+                className={`chip-btn${categoryId === category.id ? ' chip-btn-active' : ''}`}
                 style={
-                  tag === popularTag.id
-                    ? ({ '--chip-btn-color': popularTag.color } as CSSProperties)
+                  categoryId === category.id
+                    ? ({ '--chip-btn-color': categoryColor.get(category.id) } as CSSProperties)
                     : undefined
                 }
                 onClick={() => {
-                  setTag(popularTag.id)
+                  setCategoryId(category.id)
                   setPage(1)
                 }}
               >
-                {popularTag.label}
+                {category.name}
               </button>
             ))}
+          </div>
+        </div>
+
+        <div className="filter-group">
+          <label>Stock Status</label>
+          <div className="filter-chips" role="group" aria-label="Filter by stock status">
+            <button
+              type="button"
+              className={`chip-btn${stockStatus === 'all' ? ' chip-btn-active' : ''}`}
+              onClick={() => {
+                setStockStatus('all')
+                setPage(1)
+              }}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              className={`chip-btn${stockStatus === 'in' ? ' chip-btn-active' : ''}`}
+              style={stockStatus === 'in' ? ({ '--chip-btn-color': '#10b981' } as CSSProperties) : undefined}
+              onClick={() => {
+                setStockStatus('in')
+                setPage(1)
+              }}
+            >
+              In Stock
+            </button>
+            <button
+              type="button"
+              className={`chip-btn${stockStatus === 'low' ? ' chip-btn-active' : ''}`}
+              style={stockStatus === 'low' ? ({ '--chip-btn-color': '#f59e0b' } as CSSProperties) : undefined}
+              onClick={() => {
+                setStockStatus('low')
+                setPage(1)
+              }}
+            >
+              Low Stock
+            </button>
+            <button
+              type="button"
+              className={`chip-btn${stockStatus === 'out' ? ' chip-btn-active' : ''}`}
+              style={stockStatus === 'out' ? ({ '--chip-btn-color': '#ef4444' } as CSSProperties) : undefined}
+              onClick={() => {
+                setStockStatus('out')
+                setPage(1)
+              }}
+            >
+              Out of Stock
+            </button>
+          </div>
+        </div>
+
+        <div className="filter-group">
+          <label>Unit Type</label>
+          <div className="filter-chips" role="group" aria-label="Filter by unit type">
+            <button
+              type="button"
+              className={`chip-btn${unitFilter === 'all' ? ' chip-btn-active' : ''}`}
+              onClick={() => {
+                setUnitFilter('all')
+                setPage(1)
+              }}
+            >
+              All
+            </button>
+            {units.map((unit) => (
+              <button
+                key={unit.id}
+                type="button"
+                className={`chip-btn${unitFilter === unit.id ? ' chip-btn-active' : ''}`}
+                onClick={() => {
+                  setUnitFilter(unit.id)
+                  setPage(1)
+                }}
+              >
+                {unit.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="filter-group">
+          <label>Structure</label>
+          <div className="filter-chips" role="group" aria-label="Filter by product structure">
+            <button
+              type="button"
+              className={`chip-btn${hasVariantsFilter === 'all' ? ' chip-btn-active' : ''}`}
+              onClick={() => {
+                setHasVariantsFilter('all')
+                setPage(1)
+              }}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              className={`chip-btn${hasVariantsFilter === 'yes' ? ' chip-btn-active' : ''}`}
+              onClick={() => {
+                setHasVariantsFilter('yes')
+                setPage(1)
+              }}
+            >
+              With Variants
+            </button>
+            <button
+              type="button"
+              className={`chip-btn${hasVariantsFilter === 'no' ? ' chip-btn-active' : ''}`}
+              onClick={() => {
+                setHasVariantsFilter('no')
+                setPage(1)
+              }}
+            >
+              Standard
+            </button>
           </div>
         </div>
       </aside>
