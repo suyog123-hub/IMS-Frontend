@@ -5,7 +5,7 @@ import { calculateSellingPrice } from '../../utils/pricing'
 import { formatCurrency } from '../../utils/format'
 import { newVariantDraft, type VariantDraft } from './variantDrafts'
 
-const MAX_IMAGE_BYTES = 1024
+const MAX_IMAGE_BYTES = 1024 * 1024
 
 interface ProductDraft {
   name: string
@@ -46,7 +46,7 @@ export function ProductVariants({ drafts, errors, productDraft, onChange }: Prod
       return
     }
     if (file.size > MAX_IMAGE_BYTES) {
-      setImageErrors((prev) => ({ ...prev, [key]: 'Image exceeds the 1 KB size limit. Please upload a smaller image.' }))
+      setImageErrors((prev) => ({ ...prev, [key]: 'Image exceeds the 1 MB size limit. Please upload a smaller image.' }))
       return
     }
     const reader = new FileReader()
